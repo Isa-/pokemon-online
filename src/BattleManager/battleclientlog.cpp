@@ -87,7 +87,11 @@ QString BattleClientLog::nick(int spot)
     if (data()->role(spot) == BattleConfiguration::Player) {
         return rnick(spot);
     } else {
-        return QString("%1's %2").arg(data()->name(spot), rnick(spot));
+        if (data()->role(data()->opponent(spot)) == BattleConfiguration::Player) {
+            return tr("the foe's %1").arg(rnick(spot));
+        } else {
+            return tr("%1's %2").arg(data()->name(spot), rnick(spot));
+        }
     }
 }
 
@@ -194,7 +198,7 @@ void BattleClientLog::onAvoid(int spot)
 
 void BattleClientLog::onStatBoost(int spot, int stat, int boost, bool silent)
 {
-    printLine("StatChange", tu(tr("%1's %2 %3%4!").arg(nick(spot), StatInfo::Stat(stat, data()->gen()), abs(boost) > 1 ? (abs(boost) > 2 ? tr("drastically ") : tr("sharply "))
+    printLine("StatChange", tu(tr("%1's %2 %3%4!").arg(nick(spot), StatInfo::Stat(stat, data()->gen().num), abs(boost) > 1 ? (abs(boost) > 2 ? tr("drastically ") : tr("sharply "))
                                                                                                         : "",
                                                        boost > 0 ? tr("rose") : tr("fell"))), silent);
 }
@@ -338,7 +342,7 @@ void BattleClientLog::onNoTarget(int)
 void BattleClientLog::onItemMessage(int spot, int item, int part, int foe, int berry, int other)
 {
     QString mess = ItemInfo::Message(item, part);
-    mess.replace("%st", StatInfo::Stat(other));
+    mess.replace("%st", StatInfo::Stat(other, data()->gen()));
     mess.replace("%s", nick(spot));
     mess.replace("%f", nick(foe));
     mess.replace("%i", ItemInfo::Name(berry));
@@ -436,7 +440,7 @@ void BattleClientLog::onDamageDone(int spot, int damage)
 void BattleClientLog::onAbilityMessage(int spot, int ab, int part, int type, int foe, int other)
 {
     QString mess = AbilityInfo::Message(ab,part);
-    mess.replace("%st", StatInfo::Stat(other));
+    mess.replace("%st", StatInfo::Stat(other, data()->gen()));
     mess.replace("%s", nick(spot));
     //            mess.replace("%ts", data()->name(spot));
     mess.replace("%tf", data()->name(!spot));
@@ -550,4 +554,18 @@ void BattleClientLog::onRearrangeTeam(int, const ShallowShownTeam &team)
 void BattleClientLog::onPrintHtml(const QString &data)
 {
     printHtml("ServerMessage", data);
+}
+
+void BattleClientLog::onReconnect(int player)
+{
+    int spot = data()->spotFromId(player);
+
+    printHtml("Reconnect", toBoldColor(tr("%1 logged back in and is ready to resume the battle!").arg(data()->name(spot)), Qt::blue));
+}
+
+void BattleClientLog::onDisconnect(int player)
+{
+    int spot = data()->spotFromId(player);
+
+    printHtml("Disconnect", toBoldColor(tr("%1 got disconnected!").arg(data()->name(spot)), Qt::blue));
 }

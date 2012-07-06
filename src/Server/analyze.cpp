@@ -1,3 +1,7 @@
+/**
+ * See network protocol here: http://wiki.pokemon-online.eu/view/Network_Protocol_v2
+*/
+
 #include "analyze.h"
 #include "network.h"
 #include "player.h"
@@ -16,38 +20,26 @@ Analyzer::~Analyzer()
 
 void Analyzer::keepAlive()
 {
-    if (!pingedBack) {
-        //emit disconnected();
-        //return;
-    }
-    pingedBack = false;
+    pingSent++;
+
+    // You could uncomment the following, but what's the point of disconnecting someone when he could resume his connection?
+//    /* If the player hasn't answered for too long, disconnecting */
+//    if (pingSent - pingedBack > 9) {
+//        emit logout();
+//    }
+
     /* Seems that the keep alive option doesn't work on all computers */
-    notify(KeepAlive);
+    notify(KeepAlive, pingSent);
 }
 
-void Analyzer::sendMessage(const QString &message)
+void Analyzer::sendMessage(const QString &message, bool html)
 {
-    notify(SendMessage, message);
+    notify(SendMessage, Flags(0), Flags(html==true), message);
 }
 
-void Analyzer::sendChannelMessage(int chanid, const QString &message)
+void Analyzer::engageBattle(int battleid, int myid, int id, const TeamBattle &team, const BattleConfiguration &conf)
 {
-    notify(ChannelMessage, qint32(chanid), message);
-}
-
-void Analyzer::sendHtmlMessage(const QString &message)
-{
-    notify(HtmlMessage, message);
-}
-
-void Analyzer::sendHtmlChannelMessage(int chanid, const QString &message)
-{
-    notify(HtmlChannel, qint32(chanid), message);
-}
-
-void Analyzer::engageBattle(int battleid, int , int id, const TeamBattle &team, const BattleConfiguration &conf)
-{
-    notify(EngageBattle, qint32(battleid), qint32(0), qint32(id), conf, team);
+    notify(EngageBattle, qint32(battleid), Flags(1), conf.mode, qint32(myid), qint32(id), conf, team);
 }
 
 void Analyzer::connectTo(const QString &host, quint16 port)
@@ -79,24 +71,31 @@ void Analyzer::sendPlayer(const PlayerInfo &p)
     notify(PlayersList, p);
 }
 
-void Analyzer::sendTeamChange(const PlayerInfo &p)
-{
-    notify(SendTeam, p);
-}
-
 void Analyzer::sendPM(int dest, const QString &mess)
 {
     notify(SendPM, qint32(dest), mess);
 }
 
-void Analyzer::sendLogin(const PlayerInfo &p)
+void Analyzer::sendLogin(const PlayerInfo &p, const QStringList &tiers, const QByteArray &reconnectPass)
 {
-    notify(Login, p);
+    QByteArray tosend;
+    DataStream out(&tosend, QIODevice::WriteOnly);
+
+    out << uchar(Login) << Flags((!reconnectPass.isEmpty()) << LoginCommand::HasReconnectPass);
+
+    if (!reconnectPass.isEmpty()) {
+        out << reconnectPass;
+    }
+
+    out << p << tiers;
+
+    emit sendCommand(tosend);
+
 }
 
-void Analyzer::notifyAway(qint32 id, bool away)
+void Analyzer::notifyOptionsChange(qint32 id, bool away, bool ladder)
 {
-    notify(Away, id, away);
+    notify(OptionsChange, id, Flags(ladder + (away << 1)));
 }
 
 void Analyzer::sendLogout(int num)
@@ -109,9 +108,9 @@ void Analyzer::sendChallengeStuff(const ChallengeInfo &c)
     notify(ChallengeStuff, c);
 }
 
-void Analyzer::sendBattleResult(qint32 battleid, quint8 res, int winner, int loser)
+void Analyzer::sendBattleResult(qint32 battleid, quint8 res, quint8 mode, int winner, int loser)
 {
-    notify(BattleFinished, battleid, res, qint32(winner), qint32(loser));
+    notify(BattleFinished, battleid, res, mode, qint32(winner), qint32(loser));
 }
 
 void Analyzer::sendBattleCommand(qint32 battleid, const QByteArray & command)
@@ -144,9 +143,9 @@ void Analyzer::sendChannelPlayers(int channelid, const QVector<qint32> &ids)
     notify(ChannelPlayers, qint32(channelid), ids);
 }
 
-void Analyzer::notifyBattle(qint32 battleid, qint32 id1, qint32 id2)
+void Analyzer::notifyBattle(qint32 battleid, qint32 id1, qint32 id2, quint8 mode)
 {
-    notify(EngageBattle, battleid , id1, id2);
+    notify(EngageBattle, battleid, Flags(0), mode, id1, id2);
 }
 
 void Analyzer::sendUserInfo(const UserInfo &ui)
@@ -166,12 +165,13 @@ bool Analyzer::isConnected() const
 
 void Analyzer::stopReceiving()
 {
+    blockSignals(true);
     socket().close();
 }
 
 void Analyzer::finishSpectating(qint32 battleId)
 {
-    notify(SpectatingBattleFinished, battleId);
+    notify(SpectateBattle, Flags(0), battleId);
 }
 
 void Analyzer::startRankings(int page, int startingRank, int total)
@@ -184,10 +184,22 @@ void Analyzer::sendRanking(QString name, int points)
     notify(ShowRankings, false, name, qint32(points));
 }
 
+void Analyzer::sendTeam(const QString *name, const QStringList &tierList)
+{
+    Flags network(0+2);
+    if (name) {
+        network.setFlag(0, true);
+        notify(SendTeam, network, *name, tierList);
+    } else {
+        notify(SendTeam, network, tierList);
+    }
+}
+
 void Analyzer::dealWithCommand(const QByteArray &commandline)
 {
-    QDataStream in (commandline);
-    in.setVersion(QDataStream::Qt_4_7);
+    mIsInCommand = true;
+
+    DataStream in (commandline);
     uchar command;
 
     in >> command;
@@ -196,37 +208,88 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
     case Login:
         {
             if (socket().id() != 0) {
-                TeamInfo team;
-                bool ladder, show_team;
-                QColor c;
-                in >> team >> ladder >> show_team >> c;
-                emit loggedIn(team,ladder,show_team,c);
+                LoginInfo *info = new LoginInfo();
+                in >> *info;
+
+                emit loggedIn(info);
             } else
                 emit accepted(); // for registry;
 
             break;
         }
-        /* If used, would be used to dial with the server directly */
-/*    case SendMessage:
+    case Logout:
+    {
+        if (socket().id() == 0) {
+            emit ipRefused();
+        } else {
+            emit logout();
+        }
+        break;
+    }
+    case NetworkServ::Reconnect:
+    {
+        quint32 id;
+        QByteArray hash;
+
+        in >> id >> hash;
+
+        emit reconnect(id, hash);
+        break;
+    }
+    case SendMessage:
         {
-            QString mess;
-            in >> mess;
-            emit messageReceived(mess);
-            break;
-        } */
-    case ChannelMessage:
-        {
+            Flags network, data;
             qint32 chanid;
             QString mess;
-            in >> chanid >> mess;
+            in >> network >> data >> chanid >> mess;
             emit messageReceived(chanid, mess);
             break;
         }
     case SendTeam:
         {
-            TeamInfo team;
-            in >> team;
-            emit teamReceived(team);
+            Flags network;
+            in >> network;
+
+            ChangeTeamInfo cinfo;
+
+            int i = 0;
+
+#define mkptr(type, var) type var; if (network[i]) {in >> var; cinfo.var = &var;} i++;
+            mkptr(QString, name);
+            mkptr(QColor, color);
+            mkptr(TrainerInfo, info);
+
+            if (network[i++]) {
+                bool oldTeams;
+                in >> oldTeams;
+                quint8 num;
+                in >> num;
+
+                if (!oldTeams) {
+                    num = num > 6 ? 6 : num;
+
+                    QList<PersonalTeam> teams;
+
+                    for (int i = 0; i < num; i++) {
+                        PersonalTeam t;
+                        in >> t;
+                        teams.push_back(t);
+                    }
+
+                    cinfo.teams = &teams;
+
+                    emit teamChanged(cinfo);
+                } else {
+                    PersonalTeam t;
+                    in >> t;
+
+                    cinfo.teamNum = num;
+                    cinfo.team = &t;
+
+                    emit teamChanged(cinfo);
+                }
+            }
+#undef mkptr
             break;
         }
     case ChallengeStuff:
@@ -260,8 +323,10 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
         emit forfeitBattle(id);
         break;
     case KeepAlive:
-        pingedBack = true;
+    {
+        in >> pingedBack;
         break;
+    }
     case Register:
         if (socket().id() != 0)
         {
@@ -274,7 +339,7 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
         break;
     case AskForPass:
         {
-            QString hash;
+            QByteArray hash;
             in >> hash;
             emit sentHash(hash);
             break;
@@ -293,9 +358,6 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
             emit ban(id);
             break;
         }
-    case Logout:
-        emit ipRefused();
-        break;
     case ServNameChange:
         emit invalidName();
         break;
@@ -317,11 +379,14 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
     case GetBanList:
         emit banListRequested();
         break;
-    case Away:
+    case OptionsChange:
         {
-            bool away;
-            in >> away;
-            emit awayChange(away);
+            Flags f;
+            in >> f;
+
+            emit ladderChange(f[0]);
+            emit awayChange(f[1]);
+
             break;
         }
     case CPBan:
@@ -341,15 +406,13 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
     case SpectateBattle:
         {
             qint32 id;
-            in >> id;
-            emit battleSpectateRequested(id);
-            break;
-        }
-    case SpectatingBattleFinished:
-        {
-            qint32 id;
-            in >> id;
-            emit battleSpectateEnded(id);
+            Flags data;
+            in >> id >> data;
+
+            if (data[0])
+                emit battleSpectateRequested(id);
+            else
+                emit battleSpectateEnded(id);
             break;
         }
     case SpectatingBattleChat:
@@ -360,25 +423,14 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
             emit battleSpectateChat(id, str);
             break;
         }
-    case LadderChange:
-        {
-            bool change;
-            in >> change;
-            emit ladderChange(change);
-            break;
-        }
-    case ShowTeamChange:
-        {
-            bool change;
-            in >> change;
-            emit showTeamChange(change);
-            break;
-        }
     case TierSelection:
         {
+            quint8 team;
             QString tier;
-            in >> tier;
-            emit tierChanged(tier);
+            while (!in.atEnd()) {
+                in >> team >> tier;
+            }
+            emit tierChanged(team, tier);
             break;
         }
     case FindBattle:
@@ -420,16 +472,6 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
             emit tempBan(id, time);
             break;
         }
-    case CPTUnban:
-        {
-            QString name;
-            in >> name;
-            emit tunbanRequested(name);
-            break;
-        }
-    case GetTBanList:
-        emit tbanListRequested();
-        break;
     case JoinChannel:
         {
             QString name;
@@ -453,7 +495,7 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
         }
     case ServerPass:
         {
-            QString hash;
+            QByteArray hash;
             in >> hash;
             emit serverPasswordSent(hash);
             break;
@@ -462,6 +504,8 @@ void Analyzer::dealWithCommand(const QByteArray &commandline)
         emit protocolError(UnknownCommand, tr("Protocol error: unknown command received"));
         break;
     }
+    mIsInCommand = false;
+    emit endCommand();
 }
 
 void Analyzer::commandReceived(const QByteArray &command)
@@ -476,6 +520,18 @@ void Analyzer::commandReceived(const QByteArray &command)
 void Analyzer::delay()
 {
     delayCount += 1;
+}
+
+void Analyzer::swapIds(Analyzer *other)
+{
+    int id = other->socket().id();
+    other->socket().changeId(socket().id());
+    socket().changeId(id);
+}
+
+void Analyzer::sendPacket(const QByteArray &packet)
+{
+    emit packetToSend(packet);
 }
 
 void Analyzer::undelay()
@@ -495,15 +551,4 @@ GenericNetwork & Analyzer::socket()
 const GenericNetwork & Analyzer::socket() const
 {
     return *mysocket;
-}
-
-void Analyzer::notify(int command)
-{
-    QByteArray tosend;
-    QDataStream out(&tosend, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_4_7);
-
-    out << uchar(command);
-
-    emit sendCommand(tosend);
 }

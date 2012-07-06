@@ -1,8 +1,498 @@
-.QMainWindow
-{
-	background: qradialgradient(cx:0.5, cy:0.5, radius: 0.8,
-		stop:0 white, stop:1 #0ca0dd); 
+QToolTip {
+    color: black;
 }
+
+/* Because styles other than plastique suck... */
+QSplitter::handle {
+/* Find the right image and add :  image: url(images/splitter.png
+   Just look at how Plastique style's splitter is when there's no css
+   and you'll understand.
+
+   In the meantime, without the image, it's not as good. */
+	width: 5px;
+	height: 5px;
+	background-color: transparent;
+}
+
+/* Because styles other than plastique suck... */
+QSplitter::handle:hover {
+    background-color: rgba(255,255,255,140);
+}
+
+/* Main Widgets */
+
+TrainerMenu, TeamMenu, PokeSelection, Menu, ServerChoice, Client, PokeBoxes {
+    background: #5c707e;
+    border-radius: 20px;
+}
+
+MainWidget #topWidget QRadioButton::indicator {
+     image: none;
+     width: 0px;
+     height: 0px;
+}
+
+MainWidget #topWidget QRadioButton {
+    padding-left: 2px;
+    padding-right: 5px;
+    padding-bottom: 1px;
+    padding-top: 1px;
+    color: #000;
+}
+
+MainWidget #topWidget QRadioButton:checked {
+    border: 1px solid black;
+    border-radius: 4px;
+    background-color: rgba(255,255,255,140);
+}
+
+/**************** Menu ****************************/
+
+
+Menu QWidget#menuButtonsFrame {
+    border-radius: 15px;
+    border: 1px solid #304250;
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #6fa5cf, stop: 0.50 #84b2d5,
+                                stop: 0.51 #455d6f, stop: 1.0 #2f3f4c);
+	padding-top: 18px;
+	padding-bottom: 18px;
+	padding-left: 11px;
+	padding-right: 11px;
+}
+
+Menu #menuButtons {
+	background: #111b25;
+}
+
+/********** ServerChoice ***************************/
+
+ServerChoice QWidget#serverChoiceFrame {
+    border-radius: 15px;
+    border: 1px solid #304250;
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #6fa5cf, stop: 0.50 #84b2d5,
+                                stop: 0.51 #455d6f, stop: 1.0 #56738a);
+        padding-top: 18px;
+        padding-bottom: 18px;
+        padding-left: 11px;
+        padding-right: 11px;
+}
+
+ServerChoice #serverChoice {
+        background: #a8cdea;
+}
+
+/*=============================================*\*/
+/*************** Platform dependent **************/
+
+PokeButton QLabel#nickname, PokeButton QLabel#number, PokeBoxes #nickNameLabel {
+    color: white;
+    font-size: 15px;
+}
+
+PokeButton QLabel#species, PokeBoxes QFrame#innerSelectedFrame QLabel#speciesLabel {
+    font-size: 11px;
+    color: #90979f;
+}
+
+PokeButton QLabel#itemLabel {
+    font-size: 11px;
+    color: #dfe6ec;
+}
+
+PokeButton QLabel#level, PokeBoxes #levelLabel {
+    font-size: 12px;
+    color: white;
+}
+
+/*=============================================*\*/
+
+PokeButton {
+    min-width: 170px;
+    height: 85px;
+}
+
+TrainerMenu QLabel#avatar {
+    background: #ffffff;
+}
+
+PokeEdit #pokemonSprite {
+    background: #ffffff;
+	margin: 9px;
+
+}
+
+PokeEdit #itemSprite {
+	margin: 9px;
+}
+
+PokeEdit #pokemonFrame {
+	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #528bb8, stop: 0.495 #528bb8,
+                                stop: 0.505 #305174, stop: 1.0 #305174);
+	height: 110px;
+	width: 110px;
+	/*border-radius: 4px;*/
+}
+
+
+MainWidget {
+	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+							stop: 0 #6fa5cf, stop: 0.55 #84b2d5,
+							stop: 0.56 #617b91, stop: 1.0 #6f8ca4);
+	
+    padding-top: 2px;
+    padding-bottom: 2px;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+#Blank space at the top of the window
+MainWidget QLabel#topLabel {
+    
+}
+
+QLabel#appLogo {
+	margin-left: 40px;
+	margin-right: 40px;
+	margin-top: 15px;
+	margin-bottom: 30px;
+}
+
+TeamBuilder * {
+    font-family: Verdana;
+}
+
+TrainerMenu QLabel {
+    color: white;
+}
+
+TrainerMenu QLineEdit#teamName, TrainerMenu QLineEdit#teamTier {
+    padding: -1px;
+}
+
+TrainerMenu QLabel#teambuilderLabel {
+    font-size: 24px;
+}
+
+TrainerMenu QFrame#teambuilderFrame {
+    margin-top: 5px;
+    border-radius: 15px;
+    border: 1px solid #304250;
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #355e7e, stop: 0.59 #325d7e,
+                                stop: 0.60 #374652, stop: 1.0 #344654);
+}
+
+PokeBoxes QFrame#teamFrame, PokeBoxes QFrame#selectedFrame {
+    margin-top: 5px;
+    border-radius: 15px;
+    border: 1px solid #304250;
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #355e7e, stop: 0.50 #325d7e,
+                                stop: 0.51 #374652, stop: 1.0 #344654);
+}
+
+TrainerMenu QPushButton#close {
+/*    background: #b10305;*/
+    margin-top: 10px;
+    margin-right: 30px;
+    min-height: 22px;
+    margin-bottom: 8px;
+    border: 1px solid #7f8585;
+    border-radius: 3px;
+    padding: 2px;
+    color: white;
+
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #fe001b, stop: 0.8 #d40000,
+                                stop: 1.0 #9d0104);
+}
+
+TrainerMenu QPushButton#close:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #ff224b, stop: 0.8 #e40000,
+                                stop: 1.0 #bd3134);
+}
+
+TrainerMenu QPushButton#close:pressed {
+    background: #9d0104;
+    padding-top: 3px;
+    padding-left: 3px;
+    padding-bottom: 1px;
+    padding-right: 1px;
+}
+
+TrainerMenu QToolButton {
+    background-position: center;
+    background-origin: content;
+    background-repeat: no-repeat;
+}
+
+TrainerMenu QToolButton:pressed {
+    padding-top: 1px;
+    padding-left: 1px;
+    padding-bottom: -1px;
+    padding-right: -1px;
+}
+
+TrainerMenu QToolButton#addTeam {
+    background-image: url(Themes/Classic/Teambuilder/trainer/At.png);
+}
+
+TrainerMenu QToolButton#addTeam:hover {
+    background-image: url(Themes/Classic/Teambuilder/trainer/AtH.png);
+}
+
+TrainerMenu QToolButton#removeTeam {
+    background-image: url(Themes/Classic/Teambuilder/trainer/Dt.png);
+}
+
+TrainerMenu QToolButton#removeTeam:hover {
+    background-image: url(Themes/Classic/Teambuilder/trainer/DtH.png);
+}
+
+TrainerMenu QToolButton#importTeam {
+    background-image: url(Themes/Classic/Teambuilder/trainer/It.png);
+}
+
+TrainerMenu QToolButton#importTeam:hover {
+    background-image: url(Themes/Classic/Teambuilder/trainer/ItH.png);
+}
+
+TrainerMenu QToolButton#loadTeam {
+    background-image: url(Themes/Classic/Teambuilder/trainer/Lt.png);
+}
+
+TrainerMenu QToolButton#loadTeam:hover {
+    background-image: url(Themes/Classic/Teambuilder/trainer/LtH.png);
+}
+
+TrainerMenu QToolButton#saveTeam {
+    background-image: url(Themes/Classic/Teambuilder/trainer/St.png);
+}
+
+TrainerMenu QToolButton#saveTeam:hover {
+    background-image: url(Themes/Classic/Teambuilder/trainer/StH.png);
+}
+
+TrainerMenu QToolButton#teamFolderButton {
+    background-image: url(Themes/Classic/Teambuilder/trainer/Cf.png);
+}
+
+TrainerMenu QToolButton#teamFolderButton:hover {
+    background-image: url(Themes/Classic/Teambuilder/trainer/CfH.png);
+}
+
+TrainerMenu PokeButton, PokeBoxes PokeButton {
+    background: #111b25;
+    border-color: #0a131c;
+}
+
+TrainerMenu PokeButton:checked {
+    background: #491e1e;
+}
+
+PokeBoxes PokeButton:checked {
+    background: #491e1e;
+}
+
+ /* Style the tab using the tab sub-control. Note that
+     it reads QTabBar _not_ QTabWidget */
+ QTabBar#pokemonTabs::tab {
+     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 #9e9d9b, stop: 0.6 #7e7e7e,
+                                 stop: 0.65 #7a7a7a, stop: 1.0 #65696c);
+     border: 1px solid #808684;
+     border-top-color: #192a32; /* same as the pane color */
+     border-bottom-left-radius: 4px;
+     border-bottom-right-radius: 4px;
+     min-width: 8ex;
+     padding: 2px;
+	 margin-right: 2px;
+ }
+ 
+ QTabBar#pokemonTabs::tab:first {
+	 margin-left: 20px;
+ }
+
+ QTabBar#pokemonTabs::tab:selected, QTabBar#pokemonTabs::tab:hover {
+     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                 stop: 0 #fafafa, stop: 0.4 #f4f4f4,
+                                 stop: 0.5 #e7e7e7, stop: 1.0 #fafafa);
+ }
+
+ QTabBar#pokemonTabs::tab:selected {
+     border-color: #9B9B9B;
+     border-top-color: #192a32; /* same as pane color */
+ }
+
+QTabBar#pokemonTabs::tab:!selected {
+     margin-bottom: 4px; /* make non-selected tabs look smaller */
+}
+
+PokeEdit #done {
+    background: qlineargradient(x1:0, y1:0, x2: 0, y2: 1,
+        stop: 0 #016d9c, stop: 0.4 #005e90,
+        stop: 0.6 #045283, stop: 1.0 #0f3258);
+    border: 1px solid #76859a;
+    padding: 3px;
+    color: white;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    border-top-color: #025780;
+}
+
+PokeEdit #done:hover {
+         background: qlineargradient(x1:0, y1:0, x2: 0, y2: 1,
+                                                                 stop: 0 #3e8aab, stop: 0.4 #448eb5,
+                                                                 stop: 0.6 #417b9f, stop: 1.0 #154477);
+}
+
+PokeEdit #done:pressed {
+    background: #045283;
+}
+
+PokeEdit #levelSettings {
+    margin-top: 9px;
+}
+
+PokeEdit #speciesLabel {
+    font-size: 15px;
+}
+
+TeamMenu QLabel {
+    color: white;
+}
+
+TeamMenu QRadioButton, TeamMenu QCheckBox, TeamMenu QGroupBox {
+    color: white;
+}
+
+TeamMenu QRadioButton::indicator {
+    image: url(Themes/Classic/Teambuilder/check-icons/radio.png);
+}
+
+TeamMenu QRadioButton::indicator:checked {
+    image: url(Themes/Classic/Teambuilder/check-icons/radio-checked.png);
+}
+
+TeamMenu QRadioButton::indicator:checked:hover {
+    image: url(Themes/Classic/Teambuilder/check-icons/radio-checked-hover.png);
+}
+
+TeamMenu QRadioButton::indicator:pressed {
+    image: url(Themes/Classic/Teambuilder/check-icons/radio-pressed.png);
+}
+
+TeamMenu QCheckBox::indicator:checked {
+    image: url(Themes/Classic/Teambuilder/check-icons/check-checked.png);
+}
+
+TeamMenu QCheckBox::indicator:checked:hover {
+    image: url(Themes/Classic/Teambuilder/check-icons/check-checked-hover.png);
+}
+
+TeamMenu QCheckBox::indicator:pressed {
+    image: url(Themes/Classic/Teambuilder/check-icons/check-pressed.png);
+}
+
+PokeSelection QPushButton#altForme {
+    color: white;
+    background: #459903;
+}
+
+PokeSelection QPushButton#changeSpecies {
+    color: white;
+    background: #3975b8;
+}
+
+PokeSelection #pokemonSprite {
+    min-width: 96px;
+    min-height: 96px;
+}
+
+PokeSelection #pokemonFrame {
+    width: 110px;
+    height: 110px;
+}
+
+/**** box ****/
+
+PokeBoxes QFrame#innerSelectedFrame {
+    background: #111b25;
+    margin: 10px;
+    border-radius: 10px;
+}
+
+PokeBoxes QFrame#innerSelectedFrame QLabel {
+    color: white;
+}
+
+PokeBoxes QFrame#innerSelectedFrame #pokemonFrame {
+    width: 96px;
+    height: 96px;
+    border: 0;
+}
+
+PokeBoxes #movesLabel, PokeBoxes #natureLabel {
+    font-weight: bold;
+}
+
+PokeBoxes #boxes {
+    border: 1px solid red;
+    border-radius: 10px;
+}
+
+PokeBoxes #boxes:pane {
+    border-radius: 10px;
+    border: 1px solid #5c707e;
+}
+
+PokeBoxes #boxes QGraphicsView {
+    background: white;
+    border-radius: 10px;
+    border: 1px solid #64aaf1;
+}
+
+PokeBoxes #boxes QGraphicsScene {
+}
+
+QTabWidget#boxes::tab-bar {
+    left: 20px; /* move to the right by 5px */
+}
+
+/* Style the tab using the tab sub-control. Note that
+    it reads QTabBar _not_ QTabWidget */
+QTabWidget#boxes QTabBar::tab {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #E1E1E1, stop: 0.4 #DDDDDD,
+                                stop: 0.5 #D8D8D8, stop: 1.0 #D3D3D3);
+    border: 2px solid #C4C4C3;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    min-width: 8ex;
+    padding: 2px;
+}
+
+QTabWidget#boxes QTabBar::tab:selected, QTabWidget#MainChat QTabBar::tab:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #fafafa, stop: 0.4 #f4f4f4,
+                                stop: 0.5 #e7e7e7, stop: 1.0 #fafafa);
+}
+
+QTabWidget#boxes QTabBar::tab:selected {
+    border-color: #9B9B9B;
+    border-bottom-color: #C2C7CB; /* same as pane color */
+}
+
+QTabWidget#boxes QTabBar::tab:!selected {
+    margin-top: 2px; /* make non-selected tabs look smaller */
+}
+
+
+/*\*=============================================*/
 
 Client QTextEdit {
 	font-family: Tahoma;
@@ -58,45 +548,6 @@ QTabWidget#MainChat QTabBar::tab:!selected {
     margin-top: 2px; /* make non-selected tabs look smaller */
 }
 
-/*
-QMenuBar#MainChat{
-    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                       stop:0 lightgray, stop:1 darkgray);
-}
-
-QMenuBar#MainChat QMenu {
-	background: darkgray;
-}
-
-QMenuBar#MainChat QMenu::item:selected{
-	background: lightgray;
-	color: black;
-}
-
-QMenuBar#MainChat::item{
-	background: transparent;
-}
-
-QMenuBar#MainChat::item:selected{
-	background: darkgray;
-}
-
-QMenuBar#MainChat::item:pressed{
-	background: #888888;
-}*/
-
-QMenuBar#TeamBuilder
-{
-	background: #0ca3df;
-}
-
-
-TeamBuilder {
-	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-				stop: 0 #0ca4e0, stop: 0.031 #0bb3e9, stop: 0.061 #00d7fb, stop: 0.076 white, stop: 0.086 white, stop: .100 #919495, stop: 0.25 #626769,
-				stop: 0.5 #282e32, stop: 0.75 #626769, stop: .900 #919495, stop: 0.914 white, stop: 0.924 white, stop: 0.939 #00d7fb, stop: 0.969 #0bb3e9, stop: 1 #0ca4e0);
-}
-
 DockAdvanced#OwnWindow {
 	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #8f9294, stop: 0.5 #ccc9c9, stop: 1 #8f9294);
 }
@@ -114,18 +565,17 @@ QTextEdit#MainChat {
 	background-color: white;
 }
 
-#Announcement {
+#Announcement, ServerChoice #announcement {
 	border-radius: 2px;
 	border: 1px solid grey;
 	font-size: 11px;
-	background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop:0 #cbe6f8, stop:1 #15abea);
+	background: #ffffcd;
 	padding: 2px;
 	text-align: center;
 }
 
-TeamBuilder QTextEdit {
-	border-radius: 5px;
-	background-color: white;
+ServerChoice #announcement {
+	font-size: 14px;
 }
 
 QSlider::groove:horizontal {
@@ -157,105 +607,9 @@ TeamPokeButton {
 	background: #9d9fa1;
 }
 
-/*TeamPokeButton:checked{
-	background: #8683b0;
-}*/
-
-TeamBuilder QLabel#SmallText {
-	font-family: Trebuchet MS;
-	font-size: 12px; 
-	color: white;
-	font-weight: bold;
-}
-
-TeamBuilder QLabel#NormalText {
-	font-family: Trebuchet MS;
-	font-weight: bold;
-	font-size: 14px;
-	color: white;
-}
-
-TeamBuilder QLabel#BigText {
-	font-family: Trebuchet MS;
-	font-weight: bold;
-	font-size: 12px;
-	color: white;
-}
-
-TB_Advanced QGroupBox::title {
-	subcontrol-position: top left; /* position at the top center */
-	padding: 0 3px;
-	color: white;
-	font-family: Trebuchet MS;
-	font-weight: bold;
-	font-size: 13px;
-}
-
-TB_Advanced QLabel#SmallText {
-	font-family: Trebuchet MS;
-	font-size: 13px; 
-	color: white;
-	font-weight: bold;
-}
-
-TB_Advanced QLabel#BigText {
-	font-family: Trebuchet MS;
-	font-weight: bold;
-	font-size: 12px;
-	color: white;
-}
-
-TB_Advanced QRadioButton {
-	color: #0ca0dd;
-	font-family: Trebuchet MS;
-	font-size: 12px;
-}
-
-TB_Advanced QCheckBox {
-	color: #0ca0dd;
-	font-family: Trebuchet MS;
-	font-size: 12px;
-}
-
-TB_Advanced QRadioButton::indicator {
-	/*even if theres no text here, it removes the older style so its cool*/
-}
-
-TB_PokemonDetail {
-	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,stop: 0 #a6a9a9 stop: 1 #5a5f63);
-	border: 3px solid #c7c8c9;
-	border-radius: 10px;
-	width: 215px;
-	height: 225px;
-}
-
-TB_PokemonButtons {
-	background: white;
-	border: 2px solid #9b9494;
-	border-radius: 7px;
-}
-
-PokemonBoxButton {
-	background: #07a7c9;
-	color: white;
-}
-PokemonBoxButton:checked{
-	background: #067D98;
-	color: black;
-}
-PokemonBoxButton::text {
-	font-weight:bold;
-}
-
-PokemonBox {
-	background: qlineargradient(x1: 0, y1: 0, x2:0, y2: 1, stop: 0 white, stop: 1 #9faeb3);
-	border: 1px solid #059eba;
-}
-
 QPushButton#PokemonTargetButton {
 	min-height: 40px;
 }
-
 
 QProgressBar#TimeOut {
 	font-family: LCD;
@@ -290,7 +644,7 @@ QProgressBar#LifePoints::chunk{
 }
 
 BaseBattleWindow {
-	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #8f9294, stop: 0.5 #ccc9c9, stop: 1 #8f9294);
+	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #abc0d5, stop: 0.5 #ccc9c9, stop: 1 #abc0d5);
 }
 
 BaseBattleWindow QLabel#TrainerNick {
@@ -349,183 +703,11 @@ OldAttackButton{
 	min-height: 45px;
 }
 
-
-PokeBallDescBox {
-	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f9f9f9, stop: 0.5 #e4e4e4, stop: 1 #f9f9f9);
-	border: 1px solid #696565;
-	border-radius: 5px;
-}
-
-PokeBallDescBox QLabel#PokeName {
-	font-size: 13px;
-     text-transform: uppercase;
-	font-family: "SignPainter'sGothicShadedSC JL";
-}
-
-PokeBallDescBox QLabel#PokeSpec {
-	font-size: 13px;
-	font-weight: bold;
-}
-
-PokeBallDescBox QLabel {
-	font-family: Trebuchet MS;
-	font-weight: normal;
-	font-size: 13px;
-}
-
-BigOpenPokeBall {
-	margin-bottom: -6px;
-}
-
-PokedexBody {
-	border: 6px solid black;
-	border-radius: 16px;
-	background: qlineargradient(x1:0, y1:0, x2: 0, y2: 1, stop: 0 #ff5411, stop: 1 #f7ebe7);
-	min-width: 600px;
-}
-
-PokedexBody TB_PokeChoice{
-	/*background-color: #e3e1e1;*/
-	/*background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 white, stop: 1 #a1a3a7);
-	alternate-background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 white, stop: 1 #a1a3a7);*/
-	selection-background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #e3e1e1, stop: 0.5 #5c5e5f);
-	background-image: url(Themes/Dratini Dreams/Teambuilder/PokeDex/gradient.png);
-	background-repeat: repeat-xy;
-	font-family: Trebuchet MS;
-	/*text-transform: uppercase;*/
-	font-size: 13px;
-}
-
-Pokedex QLabel {
-	font-family: Trebuchet MS;
-}
-
-PokedexBody QLabel#Separator {
-	background: black;
-	max-width: 5px;
-	min-width: 5px;
-	border-left: 1px solid #421605;
-	border-right: 1px solid #421605;
-}
-
-/* The profile tab in the pokedex */
-ProfileTab, StatTab, MoveTab {
-	border: 0;
-	border-radius: 5px;
-	padding-top: 5px;
-	padding-left: 5px;
-	background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 white, stop: 1 #9faeb3);
-}
-
-StatTab QProgressBar {
-	background: white;
-	border: 1px solid #393737;
-	height: 14px;
-	text-align: center;
-}
-
-StatTab QProgressBar::chunk {
-	width: 1px;
-	background-color: #30c7ff;
-}
-
-PokedexBody QLabel#BlueHeader {
-	border: 1px solid #b3b4b4;
-	border-radius: 5px;
-	background: #afeefb;
-	font-family: Trebuchet MS;
-	font-weight: bold;
-	font-size: 13px;
-	height: 23px;
-	max-height: 23px;
-	min-height: 23px;
-	max-width: 86px;
-}
-
-PokedexBody QLabel#GreenHeader {
-	border: 1px solid #b3b4b4;
-	border-radius: 5px;
-	background: #8bd6a6;
-	font-family: Trebuchet MS;
-	font-weight: bold;
-	font-size: 13px;
-	height: 23px;
-	max-height: 23px;
-	min-height: 23px;
-	max-width: 86px;
-}
-
-PokedexBody QLabel#Title {
-	font-family: Trebuchet MS;
-	font-weight: bold;
-	font-size: 13px;
-}
-/*
-PokedexBody QFrame#GreenBackground {
-	border: 1px solid black;
-	border-radius: 8px;
-	background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #eefaed, stop: 1 #7bf967);
-} */
-
-PokedexBody QLabel#Stat {
-	font-size: 12px;
-}
-
-TB_PokemonBoxes QTabWidget#Modified::pane { /* The tab widget frame */
-	border: 6px solid #0a9d9b;
-	padding: 0;
-	margin: 0;
-	border-radius: 8px;
-}
-
 BattleWindow QTabWidget#Modified::pane {
-	border: 3px solid #e2e1e1;
+	border: 3px solid #abc0d5;
 	padding: 0;
 	margin: 0;
 	border-radius: 8px;
-}
-
-
-Pokedex QTabWidget#Modified::tab-bar {
-	alignment: center;
-	bottom: -5px;
-}
-
-Pokedex QFrame#WeakResFrame {
-	background: white;
-	border-radius: 8px;
-	border: 0;
-}
-
-StatTab QTabWidget::pane {
-	border: 1px solid #696565;
-	border-radius: 8px;
-}
-
-TB_PokemonBoxes QTabWidget#Modified::tab-bar {
-	bottom: -3px;
-}
-
-
-Pokedex QTabWidget#Modified::pane {
-	border: 2px solid #059eba;
-	padding: 0;
-	margin-bottom: 3px;
-	margin-right: 3px;
-	border-radius: 8px;
-}
-
-StatTab QTabWidget::tab-bar {
-	left: 20px;
-	bottom: -2px;
-}
-
-StatTab QTabBar::tab:selected {
-
-}
-
-StatTab QTabBar::tab {
-	min-width: 100px;
 }
 
 TypeChart QTableWidgetItem{
@@ -576,10 +758,20 @@ QTabWidget#Modified > QTabBar::tab:top:last, QTabWidget#Modified > QTabBar::tab:
 }
 
 
-BaseChallengeWindow QLabel#Title {
-	font-family: Trebuchet MS;
-	font-size: 20px;
-	font-weight: bold;
+ChallengeDialog {
+	background: #abc0d5;
+}
+
+ChallengeDialog QLabel#name, ChallengeDialog QGroupBox::title {
+	color: white;
+}
+
+ChallengeDialog QCheckBox {
+	color: #939393;
+}
+
+ChallengeDialog QLabel#avatar {
+        /*background: white;*/
 }
 
 #PlayerInfo {
@@ -594,7 +786,7 @@ BaseChallengeWindow QLabel {
 }
 
 BattleWindow QStackedWidget {
-	background: #9d9f9d;
+	background: #d9d9d9;
 }
 
 /*
@@ -623,22 +815,3 @@ QTabBar::tab:left:last, QTabBar::tab:right:last {
 
  */
 
-
-/*m_trainerInfo->setStyleSheet(
-							 "background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,"
-															  "stop: 0 #ABAFE5, stop: 1 #8588B2);"
-								"border: 1px solid gray;"
-								"border-radius: 10px"
-							); */
-/*m_winMessage->setStyleSheet(
-								"background: qradialgradient(cx:0.5, cy:0.5, radius: 0.8,"
-								"stop:0 white, stop:1 #bfbfbd);"
-								"border: 1px solid gray;"
-								"border-radius: 10px"
-							);
-*/
-/*TeamBuilder QSlider::handle:horizontal {
-	image:url(db/Teambuilder/ScrollBall.png);
-	margin: 0px -8px;
-	height: 23px;
-}*/

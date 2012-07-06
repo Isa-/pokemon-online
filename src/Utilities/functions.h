@@ -20,7 +20,7 @@ QString escapeHtml(const QString &toConvert);
 #define PROPERTY(type, name) \
 public: \
     inline type& name() { return m_prop_##name;}\
-    inline const type &name() const { return m_prop_##name;} \
+    inline type const &name() const { return m_prop_##name;} \
 private: \
     type m_prop_##name;\
 public:
@@ -136,6 +136,45 @@ void setDefaultValue(QSettings &s, const QString &key, T value)
         s.setValue(key, value);
 }
 
+template <typename T>
+T& pack(T &cont)
+{
+    return cont;
+}
+
+template <typename T, typename U, typename ...Params>
+T& pack(T &cont, const U &item, Params&&...params) {
+    cont << item;
+    return pack(cont, std::forward<Params>(params)...);
+}
+
+template <int x>
+struct __UtilitiesParam {
+
+};
+
+
+template <int x, typename It, typename Function>
+void unpack(It begin, Function function) {
+    auto param = *begin++;
+    unpack(__UtilitiesParam<x-1>(), begin, function, param);
+}
+
+
+template <int x, typename It, typename Function, typename ...Params>
+void unpack(__UtilitiesParam<x>, It begin, Function function, Params&&...params) {
+    auto param = *begin++;
+    unpack(__UtilitiesParam<x-1>(), begin, function, std::forward<Params>(params)..., param);
+}
+
+template <typename It, typename Function, typename ...Params>
+void unpack(__UtilitiesParam<0>, It, Function function, Params&&...params) {
+    function(std::forward<Params>(params)...);
+}
+
+/* Returns the folder in which you can store boxes, mods, profiles, all the application data.
+  The createFolder param is whether or not you want to force-create the subfolder */
+QString appDataPath(const QString &subfolder, bool createFolder=false);
 QString removeTrollCharacters(const QString& s);
 
 #endif // FUNCTIONS_H

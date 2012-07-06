@@ -50,6 +50,8 @@ QString ControlPanel::authorityText(int auth) const
         return tr("Moderator");
     } else if (auth == 2) {
         return tr("Administrator");
+    } else if (auth == 3) {
+        return tr("Owner");
     } else {
         return "";
     }
@@ -84,21 +86,17 @@ void ControlPanel::addAlias(const QString &name)
     aliasList->addItem(name);
 }
 
-void ControlPanel::addNameToBanList(const QString &name, const QString &ip)
+void ControlPanel::addNameToBanList(const QString &name, const QString &ip, const QDateTime& expires)
 {
     int rowcount = banTable->rowCount();
     banTable->setRowCount(rowcount+1);
     banTable->setItem(rowcount, 0, new QTableWidgetItem(name));
     banTable->setItem(rowcount, 1, new QTableWidgetItem(ip));
-}
-
-void ControlPanel::addNameToTBanList(const QString &name, const QString &ip, int time)
-{
-    int rowcount = tbanTable->rowCount();
-    tbanTable->setRowCount(rowcount+1);
-    tbanTable->setItem(rowcount, 0, new QTableWidgetItem(name));
-    tbanTable->setItem(rowcount, 1, new QTableWidgetItem(ip));
-    tbanTable->setItem(rowcount, 2, new QTableWidgetItem(QString::number(time)));
+    if (expires.toTime_t() == 0) {
+        banTable->setItem(rowcount, 2, new QTableWidgetItem(tr("Never")));
+	} else {
+        banTable->setItem(rowcount, 2, new QTableWidgetItem(expires.toLocalTime().toString("yyyy.MM.dd hh:mm:ss")));
+	}
 }
 
 void ControlPanel::on_unban_clicked()
@@ -111,16 +109,4 @@ void ControlPanel::on_unban_clicked()
 
     emit unbanRequested(banTable->item(row, 0)->text());
     banTable->removeRow(row);
-}
-
-void ControlPanel::on_tunban_clicked()
-{
-    int row = tbanTable->currentRow();
-
-    if (row == -1 || row >= tbanTable->rowCount()) {
-        return;
-    }
-
-    emit tunbanRequested(tbanTable->item(row, 0)->text());
-    tbanTable->removeRow(row);
 }

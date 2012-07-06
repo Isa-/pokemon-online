@@ -30,6 +30,7 @@ public:
     
 public slots:
     void showContextMenu(const QPoint &p);
+    void openTempBanDialog(int pId);
     void openConfig();
     void openPlayers();
     void openAntiDos();
@@ -38,6 +39,7 @@ public slots:
     void openBattleConfigWindow();
     void openSqlConfigWindow();
     void openPluginManager();
+    void openModsWindow();
 
     void sendServerMessage();
     void addChatline(const QString &line);

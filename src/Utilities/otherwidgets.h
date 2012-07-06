@@ -52,20 +52,21 @@ class QImageButton : public QAbstractButton
 {
     Q_OBJECT
 public:
+    QImageButton(QWidget *w=0);
     QImageButton(const QString &normal, const QString &hovered, const QString &checked ="");
     QSize sizeHint() const;
     QSize minimumSizeHint() const;
     QSize maximumSize() const;
 
     void changePics(const QString &normal, const QString &hovered, const QString &checked = "");
+    void changePics(const QPixmap &normal, const QPixmap &hovered, const QPixmap &checked);
 protected:
     void paintEvent(QPaintEvent *e);
-    void mouseMoveEvent(QMouseEvent *e);
+    bool event(QEvent *e);
     void mousePressEvent(QMouseEvent *e);
     void mouseReleaseEvent(QMouseEvent *e);
 private:
     QPixmap myPic, myHoveredPic, myCheckedPic;
-    int lastUnderMouse; // last mouse pos recorded
     bool pressed;
 
     enum State {
@@ -102,6 +103,7 @@ public:
     QIdListWidgetItem(int id, const QIcon &icon, const QString &text);
     bool operator<(const QListWidgetItem & item) const;
     int id() const;
+    void setId(int id);
     void setColor(const QColor &c);
 private:
     int myid;
@@ -112,7 +114,7 @@ class QScrollDownTextBrowser : public QTextBrowser
 {
     Q_OBJECT
 public:
-    QScrollDownTextBrowser();
+    QScrollDownTextBrowser(QWidget *parent=0);
     ~QScrollDownTextBrowser() { delete menu; }
 
     void setAutoClear(bool a) {
@@ -146,18 +148,6 @@ public:
     void fixup(QString &input) const;
     State validate(QString &input, int &pos) const;
     State validate(const QString &input) const;
-};
-/* I have no idea if this will work, but I'm trying :p*/
-class QImageButtonLR : public QImageButton
-{
-    Q_OBJECT
-public:
-    QImageButtonLR(const QString &normal, const QString &hovered);
-protected:
-    void mouseReleaseEvent(QMouseEvent *ev);
-signals:
-    void leftClick();
-    void rightClick();
 };
 
 /* A Progress bar that emits a signal when clicked on */
@@ -259,6 +249,15 @@ class QDraggableLabel : public QLabel
 {
 private:
     void mousePressEvent(QMouseEvent *event);
+};
+
+class QDragReactiveTabWidget : public QTabWidget
+{
+public:
+    QDragReactiveTabWidget(QWidget *parent=NULL);
+protected:
+    void dragEnterEvent(QDragEnterEvent *event);
+    void dragMoveEvent(QDragMoveEvent *event);
 };
 
 #endif // OTHERWIDGETS_H

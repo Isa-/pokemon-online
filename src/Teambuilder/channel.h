@@ -7,6 +7,7 @@
 class QIdTreeWidgetItem;
 class QScrollDownTextBrowser;
 class Client;
+class DataStream;
 
 class Channel : public QObject {
     Q_OBJECT
@@ -17,6 +18,8 @@ public:
     int id() const {
         return myid;
     }
+    void setId(int id);
+
     int ownId() const;
     QString name() const {
         return myname;
@@ -57,6 +60,8 @@ public:
     void resetEvents();
     void restoreEventSettings();
 
+    void cleanData();
+
     void makeReadyToQuit() {
         readyToQuit = true;
     }
@@ -73,7 +78,7 @@ public:
     void printLine(const QString &str, bool flashing = true, bool act=true);
     void printHtml(const QString &str, bool act = true);
 
-    void dealWithCommand(int command, QDataStream *stream);
+    void dealWithCommand(int command, DataStream *stream);
     QHash<qint32, Battle> &getBattles();
 
     /* removes if necessary (i.e. empty) a tier */
@@ -95,7 +100,7 @@ public slots:
     void anchorClicked(const QUrl &url);
 private:
     QTreeWidget *myplayers;
-    QHash<int, QIdTreeWidgetItem *> myplayersitems;
+    QMultiHash<int, QIdTreeWidgetItem *> myplayersitems;
     QHash<QString, QTreeWidgetItem *> mytiersitems;
     QTreeWidget *battleList;
     QHash<int, QIdTreeWidgetItem *> battleItems;
@@ -114,7 +119,8 @@ private:
     bool stillLoading;
 
     QIdTreeWidgetItem *item(int  id);
-    void getBackAllPlayerItems();
+    QList<QIdTreeWidgetItem *> items(int  id);
+    void insertPlayerItems(int playerid);
 };
 
 #endif // CHANNEL_H

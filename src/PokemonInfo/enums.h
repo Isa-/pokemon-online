@@ -5,10 +5,22 @@
 static const int GEN_MIN = 1;
 static const int GEN_MIN_ITEMS = 2;
 static const int GEN_MIN_ABILITIES = 3;
-// Maximum Generation supported.
-static const int GEN_MAX = 5;
 // Number of gens
-static const int NUMBER_GENS = (GEN_MAX-GEN_MIN+1);
+
+#include <numeric>
+
+namespace Gen
+{
+enum {
+    RedBlue=1, Yellow=1+(1<<8), Stadium=1+(2<<8), StadiumWithTradebacks=(1+(3<<8)),
+    GoldSilver=2, Crystal=2+(1<<8), Stadium2=2+(2<<8),
+    RubySapphiry=3, Colosseum=3+(1<<8),RFLG=3+(2<<8),Emerald=3+(3<<8), XD=3+(4<<8),
+    DiamondPearl=4, Platinum=4+(1<<8), HGSS=4+(2<<8),
+    BlackWhite=5, BlackWhite2=5+(1<<8)
+};
+
+}
+
 
 namespace Version
 {
@@ -19,7 +31,6 @@ namespace Version
     };
 
     enum {
-        LastGen = 4,
         NumberOfGens = 5
     };
 
@@ -785,8 +796,8 @@ namespace Pokemon
         Reshiram,
         Zekrom,
         Randorosu,
-        Kyuremu,
-        Kerudio,
+        Kyurem,
+        Keldeo,
         Meloia,
         Genesect,
         // Base forms end here.
@@ -804,6 +815,9 @@ namespace Pokemon
         Shaymin_S = Shaymin + (1 << 16),
         Meloia_S = Meloia + (1 << 16),
         SpikyPichu = Pichu + (1 << 16),
+        Kyurem_W = Kyurem + (1 << 16),
+        Kyurem_B = Kyurem + (2 << 16),
+        Keldeo_R = Keldeo + (1 << 16),
         Genesect_D = Genesect + (1 << 16),
         Genesect_S = Genesect + (2 << 16),
         Genesect_B = Genesect + (3 << 16),
@@ -1424,13 +1438,13 @@ namespace Move
         FlamePlatform,
         TechnoBuster,
         AncientSong,
-        SkinSword,
+        SecretSword,
         FrozenWorld,
         Lightning,
         BlueFire,
         FireDance,
-        FreezeBolt,
-        ColdFlare,
+        FreezeShock,
+        IceBurn,
         BackOut,
         IciclePolish,
         V_Generate,

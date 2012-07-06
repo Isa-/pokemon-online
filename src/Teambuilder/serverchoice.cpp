@@ -1,162 +1,271 @@
 #include "serverchoice.h"
-#include "../Utilities/functions.h"
+#include "ui_serverchoice.h"
 #include "analyze.h"
-#include "poketextedit.h"
+#include "../Utilities/functions.h"
+#include "../PokemonInfo/networkstructs.h"
+#include "serverchoicemodel.h"
+#include "mainwindow.h"
 
-ServerChoice::ServerChoice(const QString &nick)
+ServerChoice::ServerChoice(const QString &nick) :
+    ui(new Ui::ServerChoice), wasConnected(false)
 {
+    ui->setupUi(this);
+    ui->announcement->hide();
+
+    ServerChoiceModel *model = new ServerChoiceModel();
+    model->setParent(ui->serverList);
+    filter = new QSortFilterProxyModel(ui->serverList);
+    filter->setSourceModel(model);
+    filter->setSortRole(ServerChoiceModel::SortRole);
+    ui->serverList->setModel(filter);
+
+    connect(ui->description, SIGNAL(anchorClicked(QUrl)), SLOT(anchorClicked(QUrl)));
+
     QSettings settings;
 
     registry_connection = new Analyzer(true);
+    connect(registry_connection, SIGNAL(connected()), SLOT(connected()));
+
     registry_connection->connectTo(
-            settings.value("registry_server", "pokemon-online.dynalias.net").toString(),
-            settings.value("registry_port", 5081).toUInt()
+        settings.value("ServerChoice/RegistryServer", "pokemon-online-registry.dynalias.net").toString(),
+        settings.value("ServerChoice/RegistryPort", 8080).toUInt()
     );
     registry_connection->setParent(this);
 
+    ui->switchPort->setIcon(QApplication::style()->standardIcon(QStyle::SP_BrowserReload));
+
     connect(registry_connection, SIGNAL(connectionError(int,QString)), SLOT(connectionError(int , QString)));
-    connect(registry_connection, SIGNAL(serverReceived(QString, QString, quint16,QString,quint16,quint16)), SLOT(addServer(QString, QString, quint16, QString,quint16,quint16)));
+    connect(registry_connection, SIGNAL(regAnnouncementReceived(QString)), ui->announcement, SLOT(setText(QString)));
+    connect(registry_connection, SIGNAL(regAnnouncementReceived(QString)), ui->announcement, SLOT(show()));
 
-    QVBoxLayout *l = new QVBoxLayout(this);
-    mylist = new QCompactTable(0,3);
+    connect(registry_connection, SIGNAL(serverReceived(ServerInfo)), model, SLOT(addServer(ServerInfo)));
+    connect(registry_connection, SIGNAL(serverReceived(ServerInfo)), SLOT(serverAdded()));
 
-    QStringList horHeaders;
-    horHeaders << tr("Server Name") << tr("Players / Max") << tr("Advanced connection");
-    mylist->setHorizontalHeaderLabels(horHeaders);
-    mylist->setSelectionBehavior(QAbstractItemView::SelectRows);
-    mylist->setSelectionMode(QAbstractItemView::SingleSelection);
-    mylist->setShowGrid(false);
-    mylist->verticalHeader()->hide();
-    mylist->horizontalHeader()->resizeSection(0, 150);
-    mylist->horizontalHeader()->setStretchLastSection(true);
-    mylist->setMinimumHeight(200);
+    //TO-DO: Make  the item 0 un-resizable and unselectable - Latios
 
-    connect(mylist, SIGNAL(cellActivated(int,int)), SLOT(regServerChosen(int)));
-    connect(mylist, SIGNAL(currentCellChanged(int,int,int,int)), SLOT(showDetails(int)));
+    ui->serverList->setColumnWidth(0, settings.value("ServerChoice/PasswordProtectedWidth", 26).toInt());
+    ui->serverList->setColumnWidth(1, settings.value("ServerChoice/ServerNameWidth", 152).toInt());
+    if (settings.contains("ServerChoice/PlayersInfoWidth")) {
+        ui->serverList->setColumnWidth(2, settings.value("ServerChoice/PlayersInfoWidth").toInt());
+    }
+    ui->serverList->horizontalHeader()->setStretchLastSection(true);
 
-    l->addWidget(mylist, 100);
+    connect(ui->serverList, SIGNAL(activated(QModelIndex)), SLOT(regServerChosen(QModelIndex)));
+    connect(ui->serverList, SIGNAL(currentCellChanged(QModelIndex)), SLOT(showDetails(QModelIndex)));
 
-    myDesc = new PokeTextEdit();
-    myDesc->setOpenExternalLinks(true);
-    myDesc->setFixedHeight(100);
-    l->addWidget(new QEntitled("Server Description", myDesc));
+    ui->nameEdit->setText(nick);
+    ui->advServerEdit->addItem(settings.value("ServerChoice/DefaultServer").toString());
+    connect(ui->nameEdit, SIGNAL(returnPressed()), SLOT(advServerChosen()));
+    connect(ui->advServerEdit->lineEdit(), SIGNAL(returnPressed()), SLOT(advServerChosen()));
 
-    myName = new QLineEdit(nick);
-    l->addWidget(new QEntitled("Trainer Name", myName));
+    QCompleter *completer = new QCompleter(ui->advServerEdit);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    QStringList res = settings.value("ServerChoice/SavedServers").toStringList();
 
-    myAdvServer = new QLineEdit(settings.value("default_server").toString());
-    connect(myAdvServer, SIGNAL(returnPressed()), SLOT(advServerChosen()));
+    foreach (QString r, res) {
+        if (r.contains("-")) {
+            savedServers.push_back(QStringList() << r.section("-", -1).trimmed() << r.section("-", 0, -2).trimmed());
+        } else {
+            savedServers.push_back(QStringList() << r << "");
+        }
+    }
 
-    l->addWidget(new QEntitled("&Advanced Connection", myAdvServer));
+    QStringListModel *m = new QStringListModel(res, completer);
 
-    QHBoxLayout *hl= new QHBoxLayout();
-    l->addLayout(hl);
+    completer->setModel(m);
+    ui->advServerEdit->setCompleter(completer);
+    ui->advServerEdit->setModel(m);
 
-    QPushButton *cancel = new QPushButton("&Go Back");
-    QPushButton *ok = new QPushButton("Advanced &Connection");
-    QPushButton *localhost = new QPushButton("Connect to own server");
+    connect(ui->goBack, SIGNAL(clicked()), SIGNAL(rejected()));
+    connect(ui->advancedConnection, SIGNAL(clicked()), SLOT(advServerChosen()));
 
-    connect(cancel, SIGNAL(clicked()), SIGNAL(rejected()));
-    connect(ok, SIGNAL(clicked()), SLOT(advServerChosen()));
-    connect(localhost, SIGNAL(clicked()), SLOT(connectToLocalhost()));
+    QTimer *t = new QTimer(this);
+    t->singleShot(5000, this, SLOT(timeout()));
 
-    hl->addWidget(cancel);
-    hl->addWidget(ok);
-    hl->addWidget(localhost);
+#if QT_VERSION >= QT_VERSION_CHECK(4,8,0)
+    ui->serverList->sortByColumn(ServerChoiceModel::Players, Qt::SortOrder(filter->headerData(ServerChoiceModel::Players, Qt::Horizontal, Qt::InitialSortOrderRole).toInt()));
+#else
+    ui->serverList->sortByColumn(ServerChoiceModel::Players, Qt::DescendingOrder);
+#endif
 }
 
 ServerChoice::~ServerChoice()
 {
+    saveSettings();
     writeSettings(this);
+    delete ui;
 }
 
-void ServerChoice::regServerChosen(int row)
+QMenuBar * ServerChoice::createMenuBar(MainEngine *w)
 {
-    QString ip = mylist->item(row, 2)->text();
+    QMenuBar *ret = new QMenuBar();
+
+    //TODO : Add menu allowing to change port / registry IP / ??
+
+    QMenu *fileMenu = ret->addMenu(tr("&File"));
+    fileMenu->addAction(tr("&New tab"), w, SLOT(openNewTab()), tr("Ctrl+N", "New tab"));
+    fileMenu->addAction(tr("Close tab"), w, SLOT(closeTab()), tr("Ctrl+W", "Close tab"));
+    fileMenu->addSeparator();
+    fileMenu->addAction(tr("&Quit"),w,SLOT(quit()),tr("Ctrl+Q", "Quit"));
+
+    w->addThemeMenu(ret);
+    w->addStyleMenu(ret);
+
+    return ret;
+}
+
+void ServerChoice::serverAdded()
+{
+    ui->serverList->sortByColumn(filter->sortColumn(), filter->sortOrder());
+}
+
+void ServerChoice::anchorClicked(const QUrl &url)
+{
+    if (wasConnected) {
+        return;
+    }
+    if (url.scheme() == "po") {
+        if (url.path() == "change-port") {
+            on_switchPort_clicked();
+        }
+    }
+}
+
+void ServerChoice::on_switchPort_clicked()
+{
+    ui->serverList->model()->removeRows(0, ui->serverList->model()->rowCount());
+
+    ui->description->setText(tr("Connecting to registry...")+"\n");
 
     QSettings settings;
-    settings.setValue("default_server", ip);
-    if(ip.contains(":")){
-        quint16 port = ip.section(":",1,1).toInt(); //Gets port from IP:PORT
-        QString fIp = ip.section(":",0,0);  //Gets IP from IP:PORT
-        emit serverChosen(fIp,port, myName->text());
+    QString host =settings.value("ServerChoice/RegistryServer", "pokemon-online-registry.dynalias.net").toString();
+    int port = settings.value("ServerChoice/RegistryPort", 8080).toUInt();
+    int newport = port == 8080 ? 5090 : 8080;
+
+    registry_connection->connectTo(host, newport);
+
+    settings.setValue("ServerChoice/RegistryPort", newport);
+}
+
+void ServerChoice::connected()
+{
+    wasConnected = true;
+    ui->description->setText(tr("Connected to the registry!"));
+}
+
+void ServerChoice::regServerChosen(const QModelIndex &i)
+{
+    if (!i.isValid()) {
+        return;
     }
-    else
-        emit serverChosen(ip,5080, myName->text());
+
+    QString ip = ui->serverList->model()->index(i.row(), ServerChoiceModel::IP).data().toString();
+    QString name = ui->serverList->model()->index(i.row(), ServerChoiceModel::Name).data().toString();
+
+    ui->advServerEdit->setItemText(ui->advServerEdit->currentIndex(), name + " - " + ip);
+
+    QSettings settings;
+    settings.setValue("ServerChoice/DefaultServer", name  + " - " + ip);
+    if(ip.contains(":")){
+        quint16 port = ip.section(":",1,1).toInt();
+        QString fIp = ip.section(":",0,0);
+        emit serverChosen(fIp,port, ui->nameEdit->text());
+    } else {
+        emit serverChosen(ip,5080, ui->nameEdit->text());
+    }
+    addSavedServer(ip, name);
 }
 
 void ServerChoice::advServerChosen()
 {
-    QString ip = myAdvServer->text().trimmed();
+    QString info = ui->advServerEdit->currentText();
+    QString ip = info.section("-", -1).trimmed();
+    QString name = info.contains("-") ? info.section("-", 0, -2).trimmed() : "";
 
-    QSettings settings;
-    settings.setValue("default_server", ip);
-    if(ip.contains(":")){
-        quint16 port = ip.section(":",1,1).toInt(); //Gets port from IP:PORT
-        QString fIp = ip.section(":",0,0);  //Gets IP from IP:PORT
-        emit serverChosen(fIp,port, myName->text());
+    QSettings MySettings;
+    MySettings.setValue("ServerChoice/DefaultServer", ui->advServerEdit->currentText());
+    if(info.contains(":")) {
+        quint16 port = ip.section(":",1,1).toInt();
+        QString fIp = ip.section(":",0,0);
+        emit serverChosen(fIp,port, ui->nameEdit->text());
+    } else {
+        emit serverChosen(info,5080, ui->nameEdit->text());
     }
-    else
-        emit serverChosen(ip,5080, myName->text());
-
-}
-void ServerChoice::connectToLocalhost()
-{
-    emit serverChosen("localhost", 5080, myName->text());
+    addSavedServer(ip, name);
 }
 
-void ServerChoice::addServer(const QString &name, const QString &desc, quint16 num, const QString &ip, quint16 max, quint16 port)
+void ServerChoice::addSavedServer(const QString &ip, const QString &name)
 {
-    mylist->setSortingEnabled(false);
-
-    QString playerStr;
-    if(max == 0)
-        playerStr = QString::number(num).rightJustified(3);
-    else
-        playerStr = QString::number(num).rightJustified(3) + " / " + QString::number(max);
-    int row = mylist->rowCount();
-    mylist->setRowCount(row+1);
-
-    QTableWidgetItem *witem;
-
-    witem = new QTableWidgetItem(name);
-    witem->setFlags(witem->flags() ^Qt::ItemIsEditable);
-    mylist->setItem(row, 0, witem);
-
-    witem = new QTableWidgetItem(playerStr);
-    witem->setFlags(witem->flags() ^Qt::ItemIsEditable);
-    mylist->setItem(row, 1, witem);
-
-    witem = new QTableWidgetItem(ip + ":" + QString::number(port == 0 ? 5080 : port));
-    witem->setFlags(witem->flags() ^Qt::ItemIsEditable);
-    mylist->setItem(row, 2, witem);
-
-    descriptionsPerIp.insert(ip + ":" + QString::number(port == 0 ? 5080 : port), desc);
-    /*This needed to be changed because the showDescription function was looking for a ip and port,
-      while only the IP was in the list, and in the end, the description wouldn't be displayed. */
-
-    mylist->setSortingEnabled(true);
-    mylist->sortByColumn(1);
-
-    if (mylist->currentRow() != -1)
-        showDetails(mylist->currentRow());
+    if (name.length() == 0) {
+        for (int i = 0; i < savedServers.length(); i++) {
+            if (savedServers[i][0] == ip) {
+                savedServers.push_front(savedServers.takeAt(i));
+                return;
+            }
+        }
+        savedServers.push_front(QStringList() << ip << name);
+    } else {
+        for (int i = 0; i < savedServers.length(); i++) {
+            if (savedServers[i][0] == ip || savedServers[i][1] == name) {
+                savedServers.removeAt(i);
+                break;
+            }
+        }
+        savedServers.push_front(QStringList() << ip << name);
+    }
+    if (savedServers.length() > 10) {
+        savedServers.erase(savedServers.begin()+10, savedServers.end());
+    }
 }
 
-void ServerChoice::showDetails(int row)
+void ServerChoice::showDetails(const QModelIndex &i)
 {
-    if (row < 0)
+    if (!i.isValid()) {
         return;
-    myDesc->clear();
-    myDesc->insertHtml(descriptionsPerIp[mylist->item(row,2)->text()]);
+    }
+    ui->description->clear();
+    ui->description->insertHtml(i.data(ServerChoiceModel::DescRole).toString());
 
-    QString ip = mylist->item(row, 2)->text();
-    myAdvServer->setText(ip);
+    QString ip = ui->serverList->model()->index(i.row(), ServerChoiceModel::IP).data().toString();
+    QString name = ui->serverList->model()->index(i.row(), ServerChoiceModel::Name).data().toString();
 
+    ui->advServerEdit->setItemText(ui->advServerEdit->currentIndex(), name + " - " + ip);
 }
 
 void ServerChoice::connectionError(int, const QString &mess)
 {
-    mylist->setCurrentCell(-1,-1);
-    myDesc->clear();
-    myDesc->insertPlainText(tr("Disconnected from the registry: %1").arg(mess));
+    ui->serverList->setCurrentIndex(QModelIndex());
+    ui->description->clear();
+    ui->description->insertPlainText(tr("Disconnected from the registry: %1").arg(mess) + "\n");
+
+    if (!wasConnected) {
+        ui->description->insertHtml(tr("You can try a different connection by <a href='po:change-port'>changing ports</a>."));
+    }
+}
+
+void ServerChoice::timeout()
+{
+    if (wasConnected) {
+        return;
+    }
+
+    ui->description->insertHtml(tr("Connection is taking longer than expected... You can try a <a href='po:change-port'>different connection</a>."));
+}
+
+void ServerChoice::saveSettings() {
+    QSettings settings;
+    settings.setValue("ServerChoice/PasswordProtectedWidth", ui->serverList->columnWidth(0));
+    settings.setValue("ServerChoice/ServerNameWidth", ui->serverList->columnWidth(1));
+    settings.setValue("ServerChoice/PlayersInfoWidth", ui->serverList->columnWidth(2));
+    settings.setValue("ServerChoice/ServerIPWidth", ui->serverList->columnWidth(3));
+
+    QStringList res;
+    foreach (QStringList list, savedServers) {
+        if (list[1].length() > 0) {
+            res << QString("%1 - %2").arg(list[1], list[0]);
+        } else {
+            res << list[0];
+        }
+    }
+    settings.setValue("ServerChoice/SavedServers", res);
 }

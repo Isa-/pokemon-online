@@ -1,6 +1,7 @@
 #include "../PokemonInfo/pokemoninfo.h"
 #include <QtCore>
 #include <ctime>
+#include "../Utilities/coreclasses.h"
 
 /*
  * First we move to a tier.
@@ -338,7 +339,7 @@ bool MoveSet::hasHiddenPower() const {
 
 void MoveSet::complete(Skeleton &m) const
 {
-    AbilityGroup ab = PokemonInfo::Abilities(num);
+    AbilityGroup ab = PokemonInfo::Abilities(num, gen);
     int tot = abilities[0] + abilities[1] + abilities[2];
 
     m.addDefaultValue("pokemon", PokemonInfo::Name(num));
@@ -554,7 +555,7 @@ bool loadRanks(QList<QPair<Pokemon::uniqueId, qint32> > &ranks, QString filename
     QByteArray content;
 
     content = f.readAll();
-    QDataStream da(&content, QIODevice::ReadOnly);
+    DataStream da(&content, QIODevice::ReadOnly);
     da.setVersion(QDataStream::Qt_4_7);
     da >> ranks;
 
@@ -685,7 +686,7 @@ int main(int argc, char *argv[])
                 }
 
                 QByteArray data;
-                QDataStream d(&data, QIODevice::WriteOnly);
+                DataStream d(&data, QIODevice::WriteOnly);
                 d.setVersion(QDataStream::Qt_4_7);
                 d << finalranks;
 
@@ -862,7 +863,7 @@ int main(int argc, char *argv[])
             QMap<RawSet, MoveSet> leadsets;
             GlobalThings globals;
 
-            AbilityGroup defAb = PokemonInfo::Abilities(pokemon);
+            AbilityGroup defAb = PokemonInfo::Abilities(pokemon, GenInfo::GenMax());
 
             foreach(Bcc b, buffers[pokemon]) {
                 char *buffer = b.buffer.data();
@@ -890,7 +891,7 @@ int main(int argc, char *argv[])
             abilities[defAb.ab(0)] = globals.abilities[0];
             int totAbilities = globals.abilities[0];
             for (int i = 1; i < 3; i++) {
-                if (globals.abilities[i] > 0 && PokemonInfo::Abilities(pokemon).ab(i) != 0) {
+                if (globals.abilities[i] > 0 && PokemonInfo::Abilities(pokemon, GenInfo::GenMax()).ab(i) != 0) {
                     abilities[defAb.ab(i)] = globals.abilities[i];
                     totAbilities += globals.abilities[i];
                 }

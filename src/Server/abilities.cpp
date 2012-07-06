@@ -46,7 +46,7 @@ struct AMAdaptability : public AM {
 
     static void dfs(int s, int, BS &b) {
         /* So the regular stab (3) will become 4 and no stab (2) will stay 2 */
-        turn(b,s)["Stab"] = turn(b,s)["Stab"].toInt() * 4 / 3;
+        fturn(b,s).stab = fturn(b,s).stab * 4 / 3;
     }
 };
 
@@ -75,7 +75,7 @@ struct AMAngerPoint : public AM {
     }
 
     static void uodr(int s, int t, BS &b) {
-        if (!b.koed(s) && s != t && turn(b,t)["CriticalHit"].toBool() && (b.gen() <= 4 || !b.hasSubstitute(s))) {
+        if (!b.koed(s) && s != t && fturn(b,t).contains(TM::CriticalHit) && (b.gen() <= 4 || !b.hasSubstitute(s))) {
             b.sendAbMessage(3,0,s);
             b.inflictStatMod(s,Attack,12,s);
         }
@@ -248,7 +248,7 @@ struct AMCuteCharm : public AM {
     }
 
     static void pda(int s, int, BS &b) {
-        if (turn(b,s).value("HasPassedStatus").toBool())
+        if (fturn(b,s).contains(TM::HasPassedStatus))
             return;
         if (b.linked(s, "Attract")) {
             int seducer = b.linker(s, "Attract");
@@ -361,7 +361,7 @@ struct AMFlameBody : public AM {
     }
 
     static void upa(int s, int t, BS &b) {
-        if (b.poke(t).status() == Pokemon::Fine && rand() % 100 < 30) {
+        if (b.poke(t).status() == Pokemon::Fine && b.coinflip(3, 10)) {
             if (b.canGetStatus(t,poke(b,s)["AbilityArg"].toInt())) {
                 b.sendAbMessage(18,0,s,t,Pokemon::Curse,b.ability(s));
                 b.inflictStatus(t, poke(b,s)["AbilityArg"].toInt(),s);
@@ -757,7 +757,7 @@ struct AMPoisonTouch : public AM {
     static void opa(int s, int t, BS &b) {
         if (tmove(b,s).classification == Move::OffensiveStatChangingMove || tmove(b,s).flinchRate > 0)
             return;
-        if (b.poke(t).status() == Pokemon::Fine && rand() % 100 < 20) {
+        if (b.poke(t).status() == Pokemon::Fine && b.coinflip(2, 10)) {
             if (b.canGetStatus(t,poke(b,s)["AbilityArg"].toInt())) {
                 b.sendAbMessage(18,0,s,t,Pokemon::Curse,b.ability(s));
                 b.inflictStatus(t, poke(b,s)["AbilityArg"].toInt(),s);
@@ -849,7 +849,7 @@ struct AMShadowTag : public AM {
 
     static void iit(int, int t, BS &b) {
         //Shadow Tag
-        if (!b.hasWorkingAbility(t, Ability::ShadowTag) || b.gen() == 3) turn(b,t)["Trapped"] = true;
+        if (!b.hasWorkingAbility(t, Ability::ShadowTag) || b.gen().num == 3) turn(b,t)["Trapped"] = true;
     }
 };
 
@@ -1002,7 +1002,7 @@ struct AMTintedLens : public AM {
     }
 
     static void bpm(int s, int , BS &b) {
-        if (turn(b,s)["TypeMod"].toInt() < 4) {
+        if (fturn(b,s).typeMod < 4) {
             turn(b,s)["BasePowerAbilityModifier"] = 20;
         }
     }
@@ -1205,7 +1205,7 @@ struct AMMummy : public AM {
     }
 
     static void upa(int s, int t, BS &b) {
-        if (b.countBackUp(b.player(s)) > 0 && b.ability(t) != Ability::Mummy) {
+        if ( (b.countBackUp(b.player(s)) > 0 || !b.koed(s)) && b.ability(t) != Ability::Mummy) {
             b.sendAbMessage(47, 0, t);
             b.loseAbility(t);
             b.acquireAbility(t, Ability::Mummy);
@@ -1387,7 +1387,7 @@ struct AMEncourage : public AM
         turn(b,s)["BasePowerAbilityModifier"] = 6;
 
         /* Ugly, to tell life orb not to activate =/ */
-        turn(b,s)["NoLifeOrbActivation"] = true;
+        turn(b,s)["EncourageBug"] = true;
     }
 };
 
@@ -1420,13 +1420,13 @@ struct AMEccentric : public AM
         if (t == -1)
             return;
 
-        if (poke(b,t).contains("Transformed") || b.hasSubstitute(t))
+        if (fpoke(b,t).flags & BS::BasicPokeInfo::Transformed || b.hasSubstitute(t))
             return;
 
         if (b.hasWorkingAbility(t,  Ability::Illusion) && poke(b,t).contains("IllusionTarget"))
             return;
 
-        poke(b,s)["Transformed"] = true;
+        fpoke(b,s).flags &= BS::BasicPokeInfo::Transformed;
         /* Ripped off from Transform */
         /* Give new values to what needed */
         Pokemon::uniqueId num = b.pokenum(t);
@@ -1645,12 +1645,18 @@ struct AMSturdy : public AM {
     static void btd(int s, int, BS &b) {
         if (b.poke(s).isFull()) {
             turn(b,s)["CannotBeKoedAt"] = b.attackCount();
+            turn(b,s)["SturdyActivated"] = true;
         }
     }
 
     static void uss(int s, int , BS &b) {
-        b.sendAbMessage(91, 0, s);
-        turn(b,s)["SurviveReason"] = true;
+        /*  It may be possible for both Sturdy and Focus Band to activate,
+          so we make sure sturdy activated before sending the sturdy message,
+          otherwise we let focus band sending its message */
+        if (turn(b,s)["SturdyActivated"].toBool()) {
+            b.sendAbMessage(91, 0, s);
+            turn(b,s)["SurviveReason"] = true;
+        }
     }
 };
 

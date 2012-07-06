@@ -154,9 +154,14 @@ void Tier::loadFromFile()
         query.exec(QString("create index %1_tiername_index on %1 (name)").arg(sql_table));
         query.exec(QString("create index %1_tierrating_index on %1 (displayed_rating)").arg(sql_table));
 
+        QFile in("tier_" + name() + ".txt");
+
+        if (!in.exists()) {
+            return;
+        }
+
         Server::print(QString("Importing old database for tier %1 to table %2").arg(name(), sql_table));
 
-        QFile in("tier_" + name() + ".txt");
         in.open(QIODevice::ReadOnly);
 
         QStringList members = QString::fromUtf8(in.readAll()).split('\n');
@@ -516,6 +521,7 @@ void Tier::loadMemberInMemory(const QString &name, QObject *o, const char *slot)
     /* It is important that this connect is done before the connect to freeObject(),
        because then the user at the signal's reception can use the object at will knowing it's not already
        used by another Player or w/e */
+    w->setProperty("tier", this->name());
     QObject::connect(w, SIGNAL(waitFinished()), o, slot);
     QObject::connect(w, SIGNAL(waitFinished()), WaitingObjects::getInstance(), SLOT(freeObject()));
 
@@ -656,15 +662,19 @@ void Tier::loadFromXml(const QDomElement &elem)
     if (elem.hasAttribute("tableName") && elem.attribute("tableName").length() > 0) {
         sql_table = elem.attribute("tableName");
     }
-    gen = elem.attribute("gen", QString::number(GEN_MAX)).toInt();
+    m_gen = Pokemon::gen(elem.attribute("gen", QString::number(GenInfo::GenMax())).toInt(),
+                         elem.attribute("subgen",QString::number(GenInfo::NumberOfSubgens(elem.attribute("gen", QString::number(GenInfo::GenMax())).toInt())-1)).toInt());
     maxLevel = elem.attribute("maxLevel", "100").toInt();
     numberOfPokemons = elem.attribute("numberOfPokemons", "6").toInt();
     maxRestrictedPokes = elem.attribute("numberOfRestricted", "1").toInt();
     mode = elem.attribute("mode", "0").toInt();
+    if (mode < ChallengeInfo::Singles || mode > ChallengeInfo::Rotation) {
+        mode = ChallengeInfo::Singles;
+    }
     displayOrder = elem.attribute("displayOrder", "0").toInt();
 
     clauses = 0;
-//    bannedSets.clear();
+//    bannedSets.clear(); subgen="1"
 //    restrictedSets.clear();
 
     m_count = -1;
@@ -739,7 +749,8 @@ QDomElement & Tier::toXml(QDomElement &dest) const {
     }
 
     dest.setAttribute("banParent", banParentS);
-    dest.setAttribute("gen", gen);
+    dest.setAttribute("gen", m_gen.num);
+    dest.setAttribute("subgen", m_gen.subnum);
     dest.setAttribute("maxLevel", maxLevel);
     dest.setAttribute("numberOfPokemons", numberOfPokemons);
     dest.setAttribute("numberOfRestricted", maxRestrictedPokes);
@@ -951,7 +962,7 @@ void Tier::importRestrictedPokes(const QString &s)
 Tier::Tier(TierMachine *boss, TierCategory *cat) : boss(boss), node(cat), m_count(-1), last_count_time(0), holder(1000) {
     banPokes = true;
     parent = NULL;
-    gen = GEN_MAX;
+    m_gen = GenInfo::GenMax();
     maxLevel = 100;
     numberOfPokemons = 6;
     maxRestrictedPokes = 1;
@@ -978,20 +989,16 @@ LoadThread * Tier::getThread()
     return boss->getThread();
 }
 
-bool Tier::allowMode(int mode) const
+int Tier::getMode() const
 {
-    if (this->mode < 0) {
-        return true;
-    }
-
-    return this->mode == mode;
+    return mode;
 }
 
-bool Tier::allowGen(int gen) const
+bool Tier::allowGen(Pokemon::gen gen) const
 {
-    if (this->gen == 0)
+    if (this->m_gen == 0)
         return true;
-    return this->gen == gen;
+    return this->m_gen == gen;
 }
 
 int Tier::getClauses() const
@@ -1015,7 +1022,7 @@ Tier *Tier::dataClone() const
     t.maxRestrictedPokes = maxRestrictedPokes;
     t.numberOfPokemons = numberOfPokemons;
     t.maxLevel = maxLevel;
-    t.gen = gen;
+    t.m_gen = m_gen;
     t.banParentS = banParentS;
     t.bannedItems = bannedItems;
     t.bannedMoves = bannedMoves;

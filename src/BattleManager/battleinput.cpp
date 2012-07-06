@@ -3,6 +3,7 @@
 #include <QPair>
 #include "../PokemonInfo/battlestructs.h"
 #include "../Shared/battlecommands.h"
+#include "../Utilities/coreclasses.h"
 
 namespace BC = BattleCommands;
 
@@ -39,8 +40,7 @@ void BattleInput::receiveData(QByteArray inf)
         return;
     }
 
-    QDataStream in (&inf, QIODevice::ReadOnly);
-    in.setVersion(QDataStream::Qt_4_7);
+    DataStream in (&inf, QIODevice::ReadOnly);
 
     uchar command;
     qint8 player;
@@ -58,13 +58,13 @@ bool BattleInput::delayed()
 void BattleInput::pause(int ticks)
 {
     delayCount+= ticks;
-    qDebug() << "New delay (+): " << delayCount;
+    //qDebug() << "New delay (+): " << delayCount;
 }
 
 void BattleInput::unpause(int ticks)
 {
     delayCount-=ticks;
-    qDebug() << "New delay (-): " << delayCount;
+    //qDebug() << "New delay (-): " << delayCount;
     if (delayCount < 0) {
         delayCount = 0;
     }
@@ -79,7 +79,7 @@ void BattleInput::unpause(int ticks)
     mCount = 0;
 }
 
-void BattleInput::dealWithCommandInfo(QDataStream &in, uchar command, int spot)
+void BattleInput::dealWithCommandInfo(DataStream &in, uchar command, int spot)
 {
     switch (command)
     {
@@ -245,12 +245,20 @@ void BattleInput::dealWithCommandInfo(QDataStream &in, uchar command, int spot)
         qint32 id;
         in >> come >> id;
 
-        if (come) {
-            auto name = mk<QString>();
-            in >> *name;
-            output<BattleEnum::SpectatorEnter>(id, &name);
+        if (conf->isInBattle(id)) {
+            if (come) {
+                output<BattleEnum::Reconnect>(id);
+            } else {
+                output<BattleEnum::Disconnect>(id);
+            }
         } else {
-            output<BattleEnum::SpectatorLeave>(id);
+            if (come) {
+                auto name = mk<QString>();
+                in >> *name;
+                output<BattleEnum::SpectatorEnter>(id, &name);
+            } else {
+                output<BattleEnum::SpectatorLeave>(id);
+            }
         }
         break;
     }

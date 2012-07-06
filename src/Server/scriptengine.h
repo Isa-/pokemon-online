@@ -1,4 +1,4 @@
-#ifndef SCRIPTENGINE_H
+﻿#ifndef SCRIPTENGINE_H
 #define SCRIPTENGINE_H
 
 #include <QtCore>
@@ -13,7 +13,8 @@
 #include <QNetworkReply>
 #include <QHostInfo>
 
-#include "../PokemonInfo/pokemonstructs.h"
+#include "../PokemonInfo/geninfo.h"
+#include "../Utilities/functions.h"
 #include "sessiondatafactory.h"
 
 class Server;
@@ -33,43 +34,65 @@ public:
     bool attemptToSpectateBattle(int src, int p1, int p2);
     void stepEvent();
 
-    bool beforeChatMessage(int src, const QString &message, int channel);
-    void afterChatMessage(int src, const QString &message, int channel);
-    bool beforeNewMessage(const QString &message);
-    void afterNewMessage(const QString &message);
     void serverStartUp();
     void serverShutDown();
+
+    bool beforeChatMessage(int src, const QString &message, int channel);
+    void afterChatMessage(int src, const QString &message, int channel);
+
+    bool beforeNewMessage(const QString &message);
+    void afterNewMessage(const QString &message);
+
+    /* When a PM window is opened the first by src time towards another player */
+    bool beforeNewPM(int src);
+
     void beforeLogOut(int src);
     void afterLogOut(int src);
+
     bool beforeLogIn(int src);
     void afterLogIn(int src);
+
     bool beforeChannelCreated(int channelid, const QString &channelname, int playerid);
     void afterChannelCreated(int channelid, const QString &channelname, int playerid);
+
     bool beforeChannelDestroyed(int channelid);
     void afterChannelDestroyed(int channelid);
+
     bool beforeChannelJoin(int src, int channelid);
     void afterChannelJoin(int src, int channelid);
+
     void beforeChannelLeave(int src, int channelid);
     void afterChannelLeave(int src, int channelid);
+
     void beforeChangeTeam(int src);
     void afterChangeTeam(int src);
-    bool beforeChangeTier(int src, const QString& oldTier, const QString &newTier);
-    void afterChangeTier(int src, const QString& oldTier, const QString &newTier);
+
+    bool beforeChangeTier(int src, int teamSlot, const QString& oldTier, const QString &newTier);
+    void afterChangeTier(int src, int teamSlot, const QString& oldTier, const QString &newTier);
+
     bool beforeChallengeIssued(int src, int dest, const ChallengeInfo &desc);
     void afterChallengeIssued(int src, int dest, const ChallengeInfo &desc);
+
     bool beforeBattleMatchup(int src, int dest, const ChallengeInfo &desc);
     void afterBattleMatchup(int src, int dest, const ChallengeInfo &desc);
-    void beforeBattleStarted(int src, int dest, const ChallengeInfo &desc, int battleid);
-    void afterBattleStarted(int winner, int loser, const ChallengeInfo &desc, int battleid);
+
+    void beforeBattleStarted(int src, int dest, const ChallengeInfo &desc, int battleid, int team1, int team2);
+    void afterBattleStarted(int winner, int loser, const ChallengeInfo &desc, int battleid, int team1, int team2);
+
     void beforeBattleEnded(int winner, int loser, int desc, int battleid);
     void afterBattleEnded(int winner, int loser, int desc, int battleid);
+
     bool beforePlayerAway(int src, bool away);
     void afterPlayerAway(int src, bool away);
+
     bool beforePlayerKick(int src, int dest);
     void afterPlayerKick(int src, int dest);
-    bool beforePlayerBan(int src, int dest);
-    void afterPlayerBan(int src, int dest);
+
+    bool beforePlayerBan(int src, int dest, int time);
+    void afterPlayerBan(int src, int dest, int time);
+
     void battleSetup(int src, int dest, int battleId);
+
     bool beforeFindBattle(int src);
     void afterFindBattle(int src);
 
@@ -78,19 +101,28 @@ public:
     /* Functions called in scripts */
     Q_INVOKABLE void sendAll(const QString &mess);
     Q_INVOKABLE void sendHtmlAll(const QString &mess);
+
     Q_INVOKABLE void sendAll(const QString &mess, int channel);
     Q_INVOKABLE void sendHtmlAll(const QString &mess, int channel);
+
     Q_INVOKABLE void kick(int id);
     Q_INVOKABLE void kick(int playerid, int chanid);
+
+    Q_INVOKABLE void disconnect(int id); //Disconnects a player. (He can reconnect with all his data)
     /* If you edited his team, updates it for the rest of the world */
     Q_INVOKABLE void updatePlayer(int playerid);
     Q_INVOKABLE void putInChannel(int playerid, int chanid);
     Q_INVOKABLE QScriptValue createChannel(const QString &channame);
     Q_INVOKABLE QScriptValue getAnnouncement();
     Q_INVOKABLE QScriptValue getColor(int id);
+
     Q_INVOKABLE void setAnnouncement(const QString &html, int id);
     Q_INVOKABLE void setAnnouncement(const QString &html);
     Q_INVOKABLE void changeAnnouncement(const QString &html);
+
+    Q_INVOKABLE QString getDescription();
+    Q_INVOKABLE void changeDescription(const QString &html);
+
     Q_INVOKABLE void makeServerPublic(bool isPublic);
 
     // Q_INVOKABLE void setTimer(int ms); // Causes crash
@@ -102,40 +134,58 @@ public:
     Q_INVOKABLE void stopEvent();
 
     Q_INVOKABLE void shutDown();
+
     Q_INVOKABLE void sendMessage(int id, const QString &mess);
     Q_INVOKABLE void sendMessage(int id, const QString &mess, int channel);
+
     Q_INVOKABLE void sendHtmlMessage(int id, const QString &mess);
     Q_INVOKABLE void sendHtmlMessage(int id, const QString &mess, int channel);
+
     /* Print on the server. Useful for debug purposes */
     Q_INVOKABLE void print(QScriptContext *context, QScriptEngine *engine);
     Q_INVOKABLE void clearPass(const QString &name);
     Q_INVOKABLE void changeAuth(int id, int auth);
     Q_INVOKABLE void changeDbAuth(const QString &name, int auth);
     Q_INVOKABLE void changeAway(int id, bool away);
+
     Q_INVOKABLE void changeRating(const QString& name, const QString& tier, int newRating);
-    Q_INVOKABLE void changePokeLevel(int id, int slot, int level);
-    Q_INVOKABLE void changePokeNum(int id, int slot, int num);
-    Q_INVOKABLE void changePokeItem(int id, int slot, int item);
-    Q_INVOKABLE void changePokeMove(int id, int pokeslot, int moveslot, int move);
-    Q_INVOKABLE void changePokeGender(int id, int pokeslot, int gender);
-    Q_INVOKABLE void changePokeName(int id, int pokeslot, const QString &name);
-    Q_INVOKABLE void changeTier(int id, const QString &tier);
+    Q_INVOKABLE void changePokeLevel(int id, int team, int slot, int level);
+    Q_INVOKABLE void changePokeNum(int id, int team, int slot, int num);
+    Q_INVOKABLE void changePokeItem(int id, int team, int slot, int item);
+    Q_INVOKABLE void changePokeMove(int id, int team, int pokeslot, int moveslot, int move);
+    Q_INVOKABLE void changePokeGender(int id, int team, int pokeslot, int gender);
+    Q_INVOKABLE void changePokeName(int id, int team, int pokeslot, const QString &name);
+
+    Q_INVOKABLE void changeTier(int id, int team, const QString &tier);
     Q_INVOKABLE void reloadTiers();
     /* Export the SQL databases to old style txt files */
     Q_INVOKABLE void exportMemberDatabase();
     Q_INVOKABLE void exportTierDatabase();
     /* Updates the rankings. Very time consuming, be aware... ! */
     Q_INVOKABLE void updateRatings();
+    /* Updates the database and delete inactive players. Very time consuming, be aware... ! */
+    Q_INVOKABLE void updateDatabase();
     /* Resets a tier's ladders */
     Q_INVOKABLE void resetLadder(const QString &tier);
     Q_INVOKABLE void synchronizeTierWithSQL(const QString &tier);
 
     Q_INVOKABLE void clearChat();
+
     /* Accepts string as 1st parameter. */
-    Q_INVOKABLE void callLater(const QString &s, int delay);
-    Q_INVOKABLE void callQuickly(const QString &s, int delay);
+    Q_INVOKABLE int callLater(const QString &s, int delay);
+    Q_INVOKABLE int callQuickly(const QString &s, int delay);
+
     /* Accepts function as 1st parameter. */
-    Q_INVOKABLE void delayedCall(const QScriptValue &func, int delay);
+    Q_INVOKABLE int quickCall(const QScriptValue &func, int delay);
+    Q_INVOKABLE int delayedCall(const QScriptValue &func, int delay);
+
+    /* Interval timers. */
+    Q_INVOKABLE int intervalTimer(const QString &expr, int delay);
+    Q_INVOKABLE int intervalCall(const QScriptValue &func, int delay);
+
+    /* Stops a timer. */
+    Q_INVOKABLE bool stopTimer(int timerId);
+
     /* Evaluates the script given in parameter */
     Q_INVOKABLE QScriptValue eval(const QString &script);
 
@@ -157,17 +207,24 @@ public:
     Q_INVOKABLE QScriptValue ip(int id); 
     Q_INVOKABLE QScriptValue proxyIp(int id);
     Q_INVOKABLE void hostName(const QString &ip, const QScriptValue &function);
-    Q_INVOKABLE QScriptValue gen(int id);
+    Q_INVOKABLE QScriptValue gen(int id, int team);
+    Q_INVOKABLE QScriptValue subgen(int id, int team);
+    Q_INVOKABLE QScriptValue teamCount(int id);
+    Q_INVOKABLE QScriptValue generation(int genNum, int subNum);
     Q_INVOKABLE QScriptValue dbAuth(const QString &name);
     Q_INVOKABLE QScriptValue dbAuths();
     Q_INVOKABLE QScriptValue dbAll();
     Q_INVOKABLE QScriptValue dbIp(const QString &name);
     Q_INVOKABLE QScriptValue dbDelete(const QString &name);
     Q_INVOKABLE QScriptValue dbLastOn(const QString &name);
+    Q_INVOKABLE QScriptValue dbExpire(const QString &name);
+    Q_INVOKABLE QScriptValue dbTempBanTime(const QString &name);
+    Q_INVOKABLE int dbExpiration();
     Q_INVOKABLE bool dbRegistered(const QString &name);
-    Q_INVOKABLE QScriptValue tier(int id);
-    Q_INVOKABLE QScriptValue ranking(int id);
-    Q_INVOKABLE QScriptValue ratedBattles(int id);
+    Q_INVOKABLE QScriptValue tier(int id, int team);
+    Q_INVOKABLE bool hasTier(int id, const QString &tier);
+    Q_INVOKABLE QScriptValue ranking(int id, int team);
+    Q_INVOKABLE QScriptValue ratedBattles(int id, int team);
     Q_INVOKABLE QScriptValue ranking(const QString &name, const QString &tier);
     Q_INVOKABLE QScriptValue ratedBattles(const QString &name, const QString &tier);
     Q_INVOKABLE int maxAuth(const QString &ip);
@@ -177,7 +234,9 @@ public:
     Q_INVOKABLE QScriptValue ladderRating(int id, const QString &tier = QString());
     /* returns a state of the memory, useful to check for memory leaks and memory usage */
     Q_INVOKABLE QScriptValue memoryDump();
-    Q_INVOKABLE bool hasLegalTeamForTier(int id, const QString &tier);
+    /* Counts the number of players in a disconnected state - not wholly removed yet in hope they might reconnect */
+    Q_INVOKABLE int disconnectedPlayers();
+    Q_INVOKABLE bool hasLegalTeamForTier(int id, int team, const QString &tier);
     Q_INVOKABLE void changeName(int playerId, QString newName);
     Q_INVOKABLE void changeInfo(int playerId, QString newInfo);
     Q_INVOKABLE QScriptValue info(int playerId);
@@ -188,7 +247,7 @@ public:
     Q_INVOKABLE QScriptValue pokeNum(const QString &name);
     Q_INVOKABLE QScriptValue move(int num);
     Q_INVOKABLE QScriptValue moveNum(const QString &name);
-    Q_INVOKABLE int moveType(int moveNum, int gen = GEN_MAX);
+    Q_INVOKABLE int moveType(int moveNum, int gen = GenInfo::GenMax());
     Q_INVOKABLE QScriptValue item(int num);
     Q_INVOKABLE QScriptValue itemNum(const QString &item);
     Q_INVOKABLE QScriptValue nature(int num);
@@ -198,36 +257,36 @@ public:
     Q_INVOKABLE QScriptValue genderNum(QString genderName);
     Q_INVOKABLE QString gender(int genderNum);
 
-    Q_INVOKABLE QScriptValue teamPokeLevel(int id, int slot);
-    Q_INVOKABLE QScriptValue teamPoke(int id, int index);
-    Q_INVOKABLE bool hasTeamPoke(int id, int pokemonnum);
-    Q_INVOKABLE QScriptValue indexOfTeamPoke(int id, int pokenum);
-    Q_INVOKABLE bool hasDreamWorldAbility(int id, int slot);
-    Q_INVOKABLE bool compatibleAsDreamWorldEvent(int id, int slot);
+    Q_INVOKABLE QScriptValue teamPokeLevel(int id, int team, int slot);
+    Q_INVOKABLE QScriptValue teamPoke(int id, int team, int index);
+    Q_INVOKABLE bool hasTeamPoke(int id, int team, int pokemonnum);
+    Q_INVOKABLE QScriptValue indexOfTeamPoke(int id, int team, int pokenum);
+    Q_INVOKABLE bool hasDreamWorldAbility(int id, int team, int slot);
+    Q_INVOKABLE bool compatibleAsDreamWorldEvent(int id, int team, int slot);
 
-    Q_INVOKABLE QScriptValue teamPokeMove(int id, int pokeindex, int moveindex);
-    Q_INVOKABLE bool hasTeamPokeMove(int id, int pokeindex, int movenum);
-    Q_INVOKABLE QScriptValue indexOfTeamPokeMove(int id, int pokeindex, int movenum);
-    Q_INVOKABLE bool hasTeamMove(int id, int movenum);
+    Q_INVOKABLE QScriptValue teamPokeMove(int id, int team, int pokeindex, int moveindex);
+    Q_INVOKABLE bool hasTeamPokeMove(int id, int team, int pokeindex, int movenum);
+    Q_INVOKABLE QScriptValue indexOfTeamPokeMove(int id, int team, int pokeindex, int movenum);
+    Q_INVOKABLE bool hasTeamMove(int id, int team, int movenum);
 
-    Q_INVOKABLE QScriptValue teamPokeItem(int id, int pokeindex);
-    Q_INVOKABLE bool hasTeamItem(int id, int itemNum);
+    Q_INVOKABLE QScriptValue teamPokeItem(int id, int team, int pokeindex);
+    Q_INVOKABLE bool hasTeamItem(int id, int team, int itemNum);
 
-    Q_INVOKABLE QScriptValue teamPokeNature(int id, int slot);
-    Q_INVOKABLE QScriptValue teamPokeEV(int id, int slot, int stat);
-    Q_INVOKABLE QScriptValue teamPokeDV(int id, int slot, int stat);
-    Q_INVOKABLE void setTeamPokeDV(int id, int slot, int stat, int newValue);
-    Q_INVOKABLE void changeTeamPokeIV(int id, int slot, int stat, int newValue);
-    Q_INVOKABLE void changeTeamPokeEV(int id, int slot, int stat, int newValue);
+    Q_INVOKABLE QScriptValue teamPokeNature(int id, int team, int slot);
+    Q_INVOKABLE QScriptValue teamPokeEV(int id, int team, int slot, int stat);
+    Q_INVOKABLE QScriptValue teamPokeDV(int id, int team, int slot, int stat);
+    Q_INVOKABLE void changeTeamPokeDV(int id, int team, int slot, int stat, int newValue);
+    Q_INVOKABLE void changeTeamPokeEV(int id, int team, int slot, int stat, int newValue);
 
     Q_INVOKABLE int numPlayers();
+    Q_INVOKABLE int playersInMemory();
+    Q_INVOKABLE bool exists(int id);
     Q_INVOKABLE bool loggedIn(int id);
 
     Q_INVOKABLE int rand(int min, int max);
     Q_INVOKABLE long time();
     Q_INVOKABLE QScriptValue getTierList();
 
-    Q_INVOKABLE void modifyTypeChart(int type_attack, int type_defend, const QString &modifier);
     Q_INVOKABLE QScriptValue type(int id);
     Q_INVOKABLE QScriptValue typeNum(const QString &typeName);
 
@@ -235,40 +294,34 @@ public:
 
     Q_INVOKABLE QScriptValue getScript();
 
-    Q_INVOKABLE int pokeType1(int id, int gen = GEN_MAX);
-    Q_INVOKABLE int pokeType2(int id, int gen = GEN_MAX);
-
-    Q_INVOKABLE void modifyMovePower(int moveNum, unsigned char power, int gen = GEN_MAX);
-    Q_INVOKABLE void modifyMoveAccuracy(int moveNum, char accuracy, int gen = GEN_MAX);
-    Q_INVOKABLE void modifyMovePP(int moveNum, char pp, int gen = GEN_MAX);
-    Q_INVOKABLE void modifyMovePriority(int moveNum, qint8 priority, int gen = GEN_MAX);
+    Q_INVOKABLE int pokeType1(int id, int gen = GenInfo::GenMax());
+    Q_INVOKABLE int pokeType2(int id, int gen = GenInfo::GenMax());
    
     Q_INVOKABLE QScriptValue banList();
     Q_INVOKABLE void ban(QString name);
+    Q_INVOKABLE void tempBan(QString name, int time);
     Q_INVOKABLE void unban(QString name);
 
     Q_INVOKABLE void prepareWeather(int battleId, int weatherId);
     Q_INVOKABLE QScriptValue weatherNum(const QString &weatherName);
     Q_INVOKABLE QScriptValue weather(int weatherId);
 
-    Q_INVOKABLE int teamPokeAbility(int id, int slot);
-    Q_INVOKABLE void modifyPokeAbility(int id, int slot, int ability, int gen = GEN_MAX);
-    Q_INVOKABLE void changePokeAbility(int id, int slot, int ability);
-    Q_INVOKABLE QScriptValue pokeAbility(int poke, int slot, int gen = GEN_MAX);
-    Q_INVOKABLE void changePokeHappiness(int id, int slot, int value);
-    Q_INVOKABLE void changePokeShine(int id, int slot, bool value);
-    Q_INVOKABLE QScriptValue teamPokeShine(int id, int slot);
-    Q_INVOKABLE void changePokeNature(int id, int pokeslot, int nature);
-    Q_INVOKABLE QScriptValue teamPokeGender(int id, int slot);
+    Q_INVOKABLE int teamPokeAbility(int id, int team, int slot);
+    Q_INVOKABLE void changePokeAbility(int id, int team, int slot, int ability);
+    Q_INVOKABLE QScriptValue pokeAbility(int poke, int slot, int gen = GenInfo::GenMax());
+    Q_INVOKABLE void changePokeHappiness(int id, int team, int slot, int value);
+    Q_INVOKABLE void changePokeShine(int id, int team, int slot, bool value);
+    Q_INVOKABLE QScriptValue teamPokeShine(int id, int team, int slot);
+    Q_INVOKABLE void changePokeNature(int id, int team, int pokeslot, int nature);
+    Q_INVOKABLE QScriptValue teamPokeGender(int id, int team, int slot);
 
-    Q_INVOKABLE QScriptValue teamPokeNick(int id, int pokeslot);
+    Q_INVOKABLE QScriptValue teamPokeNick(int id, int team, int pokeslot);
 
     static QScriptValue nativePrint(QScriptContext *context, QScriptEngine *engine);
 
     Q_INVOKABLE void inflictStatus(int battleId, bool toFirstPlayer, int slot, int status);
-    Q_INVOKABLE void modifyPokeStat(int poke, int stat, quint8 value);
 
-    Q_INVOKABLE void forceBattle(int player1, int player2, int clauses, int mode, bool is_rated = false);
+    Q_INVOKABLE void forceBattle(int player1, int player2, int team1, int team2, int clauses, int mode, bool is_rated = false);
     Q_INVOKABLE int getClauses(const QString &tier);
     Q_INVOKABLE QString serverVersion();
     Q_INVOKABLE bool isServerPrivate();
@@ -276,27 +329,43 @@ public:
     /* Internal use only */
     Q_INVOKABLE void sendNetworkCommand(int id, int command);
     
+    Q_INVOKABLE QString sha1(const QString &text);
+    Q_INVOKABLE QString md4(const QString &text);
+    Q_INVOKABLE QString md5(const QString &text);
+
+    Q_INVOKABLE bool validColor(const QString &color);
+    Q_INVOKABLE QString hexColor(const QString &colorname);
+
 // Potentially unsafe functions.
 #ifndef PO_SCRIPT_SAFE_ONLY
     /* Save vals using the QSettings (persistent vals, that stay after the shutdown of the server */
     Q_INVOKABLE void saveVal(const QString &key, const QVariant &val);
     Q_INVOKABLE void saveVal(const QString &file, const QString &key, const QVariant &val);
+
     Q_INVOKABLE void removeVal(const QString &key);
     Q_INVOKABLE void removeVal(const QString &file, const QString &key);
+
     Q_INVOKABLE QScriptValue getVal(const QString &key);
     Q_INVOKABLE QScriptValue getVal(const QString &file, const QString &key);
+
     // Returns an array of Script_* key names in config.
     Q_INVOKABLE QScriptValue getValKeys();
     Q_INVOKABLE QScriptValue getValKeys(const QString &file);
+
+    Q_INVOKABLE QScriptValue filesForDirectory (const QString &dir);
+    Q_INVOKABLE QScriptValue dirsForDirectory (const QString &dir);
+
     // Direct file access.
     Q_INVOKABLE void appendToFile(const QString &fileName, const QString &content);
     Q_INVOKABLE void writeToFile(const QString &fileName, const QString &content);
     Q_INVOKABLE void deleteFile(const QString &fileName);
     Q_INVOKABLE QScriptValue getFileContent(const QString &path);
+
     /* GET call */
     Q_INVOKABLE void webCall(const QString &urlstring, const QScriptValue &callback);
     /* POST call */
     Q_INVOKABLE void webCall(const QString &urlstring, const QScriptValue &callback, const QScriptValue &params_array);
+
     /* synchronous GET call */
     Q_INVOKABLE QScriptValue synchronousWebCall(const QString &urlstring);
     /* synchronous POST call */
@@ -337,7 +406,10 @@ private:
     QHash<QNetworkReply*,QScriptValue> webCallEvents;
     QHash<int,QScriptValue> myHostLookups;
 
-    void startStopEvent() {stopevents.push_back(false);}
+    void startStopEvent() {
+        stopevents.push_back(false);
+    }
+
     bool endStopEvent() {
         bool res = stopevents.back();
         stopevents.pop_back();
@@ -351,23 +423,16 @@ private:
     void printLine(const QString &s);
 
     bool testPlayer(const QString &function, int id);
+    bool testTeamCount(const QString &function, int id, int team);
     bool testChannel(const QString &function, int id);
     bool testPlayerInChannel(const QString &function, int id, int chan);
     bool testRange(const QString &function, int val, int min, int max);
     void warn(const QString &function, const QString &message);
 
-    template<class T>
-    void makeEvent(const QString &event, const T& param);
-    template<class T, class T2>
-    void makeEvent(const QString &event, const T &param, const T2 &param2);
-    template<class T, class T2, class T3>
-    void makeEvent(const QString &event, const T& param, const T2 &param2, const T3 &param3);
-    template<class T>
-    bool makeSEvent(const QString &event, const T& param);
-    template<class T, class T2>
-    bool makeSEvent(const QString &event, const T &param, const T2 &param2);
-    template<class T, class T2, class T3>
-    bool makeSEvent(const QString &event, const T& param, const T2 &param2, const T3 &param3);
+    template <typename ...Params>
+    void makeEvent(const QString &event, Params&&... params);
+    template <typename ...Params>
+    bool makeSEvent(const QString &event, Params&&... params);
 };
 
 class ScriptWindow : public QWidget
@@ -384,68 +449,26 @@ private:
     QTextEdit *myedit;
 };
 
-template<class T>
-void ScriptEngine::makeEvent(const QString &event, const T &param)
+template<typename ...Params>
+void ScriptEngine::makeEvent(const QString &event, Params &&... params)
 {
     if (!myscript.property(event, QScriptValue::ResolveLocal).isValid())
         return;
 
-    evaluate(myscript.property(event).call(myscript, QScriptValueList() << param));
+    QScriptValueList l;
+    evaluate(myscript.property(event).call(myscript, pack(l, params...)));
 }
 
-template<class T, class T2>
-void ScriptEngine::makeEvent(const QString &event, const T &param, const T2 &param2)
-{
-    if (!myscript.property(event, QScriptValue::ResolveLocal).isValid())
-        return;
-
-    evaluate(myscript.property(event).call(myscript, QScriptValueList() << param << param2));
-}
-
-template<class T, class T2, class T3>
-void ScriptEngine::makeEvent(const QString &event, const T &param, const T2 &param2, const T3 &param3)
-{
-    if (!myscript.property(event, QScriptValue::ResolveLocal).isValid())
-        return;
-
-    evaluate(myscript.property(event).call(myscript, QScriptValueList() << param << param2 << param3));
-}
-
-template<class T>
-bool ScriptEngine::makeSEvent(const QString &event, const T &param)
+template<typename ...Params>
+bool ScriptEngine::makeSEvent(const QString &event, Params &&... params)
 {
     if (!myscript.property(event, QScriptValue::ResolveLocal).isValid())
         return true;
 
     startStopEvent();
 
-    evaluate(myscript.property(event).call(myscript, QScriptValueList() << param));
-
-    return !endStopEvent();
-}
-
-template<class T, class T2>
-bool ScriptEngine::makeSEvent(const QString &event, const T &param, const T2 &param2)
-{
-    if (!myscript.property(event, QScriptValue::ResolveLocal).isValid())
-        return true;
-
-    startStopEvent();
-
-    evaluate(myscript.property(event).call(myscript, QScriptValueList() << param << param2));
-
-    return !endStopEvent();
-}
-
-template<class T, class T2, class T3>
-bool ScriptEngine::makeSEvent(const QString &event, const T &param, const T2 &param2, const T3 &param3)
-{
-    if (!myscript.property(event, QScriptValue::ResolveLocal).isValid())
-        return true;
-
-    startStopEvent();
-
-    evaluate(myscript.property(event).call(myscript, QScriptValueList() << param << param2 << param3));
+    QScriptValueList l;
+    evaluate(myscript.property(event).call(myscript, pack(l, params...)));
 
     return !endStopEvent();
 }

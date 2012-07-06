@@ -6,10 +6,12 @@
 
 class ClientPlugin;
 class MainEngine;
+class ClientInterface;
+class OnlineClientPlugin;
 
 namespace cross {
     class DynamicLibrary;
-};
+}
 
 class PluginManager
 {
@@ -24,13 +26,18 @@ public:
 
     void addPlugin(const QString &path);
     void freePlugin(int index);
+
+    void launchClient(ClientInterface *c);
+    void quitClient(ClientInterface *c);
 private:
     QVector<cross::DynamicLibrary *> libraries;
     QVector<ClientPlugin *> plugins;
+    QHash<ClientInterface*, QHash<ClientPlugin *, OnlineClientPlugin*> > clientPlugins;
     QStringList filenames;
 
     void updateSavedList();
     MainEngine *engine;
+    QSet<ClientInterface *> clients;
 };
 
 class PluginManagerWidget : public QWidget

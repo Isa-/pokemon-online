@@ -1,4 +1,4 @@
-TARGET = "Chain Breeding"
+TARGET = "ChainBreeding"
 DESTDIR = ../../bin
 HEADERS += ../PokemonInfo/pokemonstructs.h \
     ../PokemonInfo/pokemoninfo.h \
@@ -7,3 +7,8 @@ SOURCES += main.cpp
 LIBS += -L../../bin \
     -lpokemonlib \
     -lutilities
+
+QMAKE_CXXFLAGS += "-std=c++0x -U__STRICT_ANSI__"
+
+include(../Shared/Common.pri)
+

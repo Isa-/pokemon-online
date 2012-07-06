@@ -15,9 +15,9 @@
  */
 
 enum Command {
-    WhatAreYou = 0,
-    WhoAreYou,
+    ZipCommand = 0,
     Login,
+    Reconnect,
     Logout,
     SendMessage,
     PlayersList,
@@ -36,7 +36,7 @@ enum Command {
     ServDescChange,
     ServNameChange,
     SendPM = 20,
-    Away,
+    OptionsChange,
     GetUserInfo,
     GetUserAlias,
     GetBanList,
@@ -45,10 +45,10 @@ enum Command {
     SpectateBattle,
     SpectatingBattleMessage,
     SpectatingBattleChat,
-    SpectatingBattleFinished = 30,
-    LadderChange,
-    ShowTeamChange,
-    VersionControl,
+    Unused30 = 30,
+    Unused31,
+    Unused32,
+    VersionControl_,
     TierSelection,
     ServMaxChange,
     FindBattle,
@@ -57,7 +57,7 @@ enum Command {
     CPTBan,
     CPTUnban = 40,
     PlayerTBan,
-    GetTBanList,
+    Unused42,
     BattleList,
     ChannelsList,
     ChannelPlayers,
@@ -66,18 +66,36 @@ enum Command {
     ChannelBattle,
     RemoveChannel,
     AddChannel = 50,
-    ChannelMessage,
+    Unused51,
     ChanNameChange,
-    HtmlMessage,
-    HtmlChannel,
+    Unused53,
+    Unused54,
     ServerName,
     SpecialPass,
     ServerListEnd,              // Indicates end of transmission for registry.
     SetIP,                      // Indicates that a proxy server sends the real ip of client
-    ServerPass                  // Prompts for the server password
+    ServerPass                 // Prompts for the server password
 };
 
 enum ProtocolError {
     UnknownCommand = 0
 };
 
+namespace LoginCommand {
+    enum NetworkFlagsCS {
+        HasClientType = 0,
+        HasVersionNumber,
+        HasReconnect,
+        HasDefaultChannel,
+        HasAdditionalChannels,
+        HasColor,
+        HasTrainerInfo,
+        /* markerbit = 7 */
+        HasTeams = 8,
+        HasEventSpecification,
+        HasPluginList
+    };
+    enum NetworkFlagsSC {
+        HasReconnectPass = 0
+    };
+}

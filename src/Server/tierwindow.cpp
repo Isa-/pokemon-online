@@ -1,7 +1,7 @@
 #include "tierwindow.h"
 #include "tiermachine.h"
-#include "confighelper.h"
 #include "tier.h"
+#include "../Utilities/confighelper.h"
 
 TierWindow::TierWindow(QWidget *parent) : QWidget(parent), helper(NULL)
 {
@@ -143,8 +143,17 @@ void TierWindow::openTierEdit(Tier *t)
         helper->addConfigHelper(new ConfigCombo<QString>("Parent Tier", t->banParentS, parents, parents));
     }
 
-    helper->addConfigHelper(new ConfigCombo<int>("Generation", t->gen, QStringList() << "Any" << "1st Gen" << "2nd Gen" << "3rd Gen" << "4th Gen" << "5th Gen",
-                            QList<int> () << 0 << 1 << 2 << 3 << 4 << 5));
+    QStringList genS = QStringList() << "Any";
+    QList<Pokemon::gen> gens;
+    gens.push_back(0);
+    for (int i = GenInfo::GenMin(); i <= GenInfo::GenMax(); i++) {
+        for (int j = 0; j < GenInfo::NumberOfSubgens(i); j++) {
+            gens << Pokemon::gen(i, j);
+            genS << QString("%1 (%2)").arg(GenInfo::Gen(gens.back().num), GenInfo::Version(gens.back()));
+        }
+    }
+
+    helper->addConfigHelper(new ConfigCombo<Pokemon::gen>("Generation", t->m_gen, genS,  gens ));
     helper->addConfigHelper(new ConfigCheck("Ban pokemon/moves/items (uncheck to restrict the choice to them instead)", t->banPokes));
     helper->addConfigHelper(new ConfigSpin("Max number of pokemon", t->numberOfPokemons, 1, 6));
     helper->addConfigHelper(new ConfigText("Pokemon", pokemons));
@@ -159,9 +168,9 @@ void TierWindow::openTierEdit(Tier *t)
     items = t->getBannedItems();
     restrPokemons = t->getRestrictedPokes();
 
-    helper->addConfigHelper(new ConfigCombo<int>("Battle Mode in Find Battle", t->mode, QStringList() << "Any" << "Singles" << "Doubles" << "Triples"
+    helper->addConfigHelper(new ConfigCombo<int>("Battle Mode in Find Battle", t->mode, QStringList() << "Singles" << "Doubles" << "Triples"
                                                  << "Rotation Battles",
-                                                 QList<int>() << -1 << ChallengeInfo::Singles << ChallengeInfo::Doubles << ChallengeInfo::Triples
+                                                 QList<int>() << ChallengeInfo::Singles << ChallengeInfo::Doubles << ChallengeInfo::Triples
                                                  << ChallengeInfo::Rotation));
 
     int clauses = t->clauses;

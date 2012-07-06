@@ -1,46 +1,51 @@
 #ifndef SERVERCHOICE_H
 #define SERVERCHOICE_H
 
-#include <QtGui>
 #include "centralwidget.h"
 
-/* This is the dialog, when you click on "Go Online" from the menu.
-   It requests a hostname/IP address to connect to, and then
-   the signal textValueSelected or rejected is emitted */
-
-class QCompactTable;
+class ServerInfo;
 class Analyzer;
 
-class ServerChoice : public QWidget, public CentralWidgetInterface
+namespace Ui {
+class ServerChoice;
+}
+
+class ServerChoice : public QFrame, public CentralWidgetInterface
 {
     Q_OBJECT
+
 public:
     ServerChoice(const QString &nick);
     ~ServerChoice();
 
-    QSize defaultSize() {
-        return QSize(500, 450);
-    }
+    void saveSettings();
 
-public slots:
-    void addServer(const QString &name, const QString &desc, quint16 num, const QString &ip, quint16 max, quint16 port);
+    QMenuBar *createMenuBar(MainEngine *);
 signals:
     void serverChosen(const QString &ip, const quint16 port, const QString &nick);
     void rejected();
 private slots:
-    void showDetails(int row);
-    void regServerChosen(int row);
+    void serverAdded();
+    void showDetails(const QModelIndex&);
+    void regServerChosen(const QModelIndex&);
     void advServerChosen();
     void connectionError(int , const QString &mess);
-    void connectToLocalhost();
-private:
-    QCompactTable *mylist;
-    QLineEdit *myAdvServer;
-    QLineEdit *myName;
-    QTextBrowser *myDesc;
-    Analyzer *registry_connection;
+    void connected();
+    void anchorClicked(const QUrl&);
+    void timeout();
 
-    QHash<QString, QString> descriptionsPerIp;
+    void on_switchPort_clicked();
+private:
+    Ui::ServerChoice *ui;
+
+    Analyzer *registry_connection;
+    QSortFilterProxyModel *filter;
+
+    QList<QStringList> savedServers;
+
+    bool wasConnected;
+
+    void addSavedServer(const QString &ip, const QString &name="");
 };
 
 #endif // SERVERCHOICE_H

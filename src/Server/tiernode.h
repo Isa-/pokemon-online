@@ -2,13 +2,17 @@
 #define TIERNODE_H
 
 #include <QtCore>
-#include <QtGui>
+#include <QTreeWidgetItem>
+#include "../Utilities/coreclasses.h"
 
 class QDomElement;
 
 struct TierNode
 {
     TierNode() : displayOrder(0) {
+    }
+
+    virtual ~TierNode() {
 
     }
 
@@ -31,7 +35,7 @@ struct TierNode
     virtual QTreeWidgetItem *buildGui() const {
         return new QTreeWidgetItem(QStringList() << name());
     }
-    virtual void serialize(QDataStream &stream, int level) {
+    virtual void serialize(DataStream &stream, int level) {
         stream << uchar (level) << name();
     }
 

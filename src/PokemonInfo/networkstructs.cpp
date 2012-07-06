@@ -1,138 +1,50 @@
 #include "networkstructs.h"
+#include "../Utilities/coreclasses.h"
+#include "../Shared/config.h"
+#include "../Shared/networkcommands.h"
 
-PokePersonal & TeamInfo::pokemon(int num)
+DataStream & operator >> (DataStream &in, PlayerInfo &p)
 {
-    return m_pokes[num];
-}
+    VersionControl v;
+    in >> v;
 
-
-const PokePersonal & TeamInfo::pokemon(int num) const
-{
-    return m_pokes[num];
-}
-
-QDataStream &operator << (QDataStream &out, const TeamInfo& team)
-{
-    out << team.name;
-    out << team.info;
-    out << team.lose;
-    out << team.win;
-    out << team.avatar;
-    out << team.defaultTier;
-
-    out << team.gen;
-
-    for (int i = 0; i < 6; i++)
-    out << team.pokemon(i);
-
-    return out;
-}
-
-QDataStream &operator >> (QDataStream &in, TeamInfo& team)
-{
-    in >> team.name;
-    in >> team.info;
-    in >> team.lose;
-    in >> team.win;
-    in >> team.avatar;
-    in >> team.defaultTier;
-
-    in >> team.gen;
-
-    if (team.gen < GEN_MIN || team.gen > GEN_MAX)
-        team.gen = GEN_MAX;
-
-    for (int i = 0; i < 6; i++)
-        team.pokemon(i).gen() = team.gen;
-
-    for (int i = 0; i < 6; i++) {
-        in >> team.pokemon(i);
+    if (v.versionNumber != 0) {
+        return in;
     }
 
-    if (team.info.length() > 300) {
-        team.info.resize(300);
-    }
-    if (team.lose.length() > 200) {
-        team.lose.resize(200);
-    }
-    if (team.win.length() > 200) {
-        team.win.resize(200);
+    Flags network;
+    v.stream >> p.id >> network >> p.flags >> p.name >> p.color >> p.avatar >> p.info >> p.auth;
+
+    qint8 numTiers;
+
+    v.stream >> numTiers;
+
+    p.ratings.clear();
+    for (int i = 0; i < numTiers; i++) {
+        QString tier;
+        quint16 rating;
+        v.stream >> tier >> rating;
+
+        p.ratings.insert(tier, rating);
     }
 
     return in;
 }
 
-QDataStream &operator << (QDataStream &out, const BasicInfo& team)
+DataStream & operator << (DataStream &out, const PlayerInfo &p)
 {
-    out << team.name;
-    out << team.info;
+    VersionControl v;
 
-    return out;
-}
+    v.stream << p.id << Flags(0) << p.flags << p.name << p.color << p.avatar << p.info << p.auth << qint8(p.ratings.size());
 
-QDataStream &operator >> (QDataStream &in, BasicInfo& team)
-{
-    in >> team.name;
-    in >> team.info;
+    QHashIterator<QString, quint16> it(p.ratings);
 
-    /* To avoid server overloads */
-    if (team.info.length() > 250)
-        team.info.resize(250);
-
-    return in;
-}
-
-
-QDataStream & operator >> (QDataStream &in, PlayerInfo &p)
-{
-    in >> p.id;
-    in >> p.team;
-    in >> p.auth;
-    in >> p.flags;
-    in >> p.rating;
-
-    for (int i = 0; i < 6; i++) {
-        in >> p.pokes[i];
+    while (it.hasNext()) {
+        it.next();
+        v.stream << it.key() << it.value();
     }
 
-    in >> p.avatar;
-    in >> p.tier;
-    in >> p.color;
-    in >> p.gen;
-
-    return in;
-}
-
-QDataStream & operator << (QDataStream &out, const PlayerInfo &p)
-{
-    out << p.id;
-    out << p.team;
-    out << p.auth;
-    out << p.flags;
-    out << p.rating;
-
-    for (int i = 0; i < 6; i++) {
-        out << p.pokes[i];
-    }
-
-    out << p.avatar;
-    out << p.tier;
-    out << p.color;
-    out << p.gen;
-
-    return out;
-}
-
-QDataStream & operator >> (QDataStream &in, FullInfo &p)
-{
-    in >> p.team >> p.ladder >> p.showteam >> p.nameColor;
-
-    return in;
-}
-
-QDataStream & operator << (QDataStream &out, const FullInfo &p)
-{
-    out << p.team << p.ladder << p.showteam << p.nameColor;
+    out << v;
 
     return out;
 }
@@ -142,7 +54,7 @@ Battle::Battle(int id1, int id2) : id1(id1), id2(id2)
 
 }
 
-QDataStream & operator >> (QDataStream &in, Battle &p)
+DataStream & operator >> (DataStream &in, Battle &p)
 {
     //in >> p.battleid >> p.id1 >> p.id2;
     in >> p.id1 >> p.id2;
@@ -150,10 +62,211 @@ QDataStream & operator >> (QDataStream &in, Battle &p)
     return in;
 }
 
-QDataStream & operator << (QDataStream &out, const Battle &p)
+DataStream & operator << (DataStream &out, const Battle &p)
 {
     //out << p.battleid << p.id1 << p.id2;
     out << p.id1 << p.id2;
 
     return out;
+}
+
+ProtocolVersion::ProtocolVersion()
+{
+    version = PROTOCOL_VERSION;
+    subversion = PROTOCOL_SUBVERSION;
+}
+
+DataStream &operator >> (DataStream &in, ProtocolVersion &p)
+{
+    in >> p.version >> p.subversion;
+    return in;
+}
+
+DataStream &operator << (DataStream &out, const ProtocolVersion &p)
+{
+    out << p.version << p.subversion;
+    return out;
+}
+
+TrainerInfo::TrainerInfo() : avatar(0) {
+}
+
+DataStream & operator >> (DataStream &in, TrainerInfo &i)
+{
+    VersionControl v;
+    in >> v;
+
+    if (i.version != v.versionNumber) {
+        return in;
+    }
+
+    Flags network;
+    v.stream >> network >> i.avatar >> i.info;
+
+    if (network[TrainerInfo::HasWinningMessages]) {
+        v.stream >> i.winning >> i.losing >> i.tie;
+    }
+
+    if (i.info.length() > 300) {
+        i.info.resize(300);
+    }
+    if (i.winning.length() > 200) {
+        i.winning.resize(200);
+    }
+    if (i.losing.length() > 200) {
+        i.losing.resize(200);
+    }
+    if (i.tie.length() > 200) {
+        i.tie.resize(200);
+    }
+
+    return in;
+}
+
+DataStream & operator << (DataStream &out, const TrainerInfo &i)
+{
+    VersionControl v(i.version);
+    Flags network;
+
+    bool messages = !i.winning.isEmpty() || !i.losing.isEmpty() || !i.tie.isEmpty();
+
+    network.setFlag(TrainerInfo::HasWinningMessages, messages);
+
+    v.stream << network << i.avatar << i.info;
+    if (messages) {
+        v.stream << i.winning << i.losing << i.tie;
+    }
+
+    out << v;
+    return out;
+}
+
+DataStream & operator >> (DataStream & in, PersonalTeam & team)
+{
+    VersionControl v;
+    in >> v;
+
+    if (v.versionNumber != 0) {
+        return in;
+    }
+
+    Flags network;
+    v.stream >> network;
+
+    if (network[0]) {
+        QString s;
+        v.stream >> s;
+        team.defaultTier() = s;
+    }
+
+    v.stream >> team.gen();
+
+    for (int i = 0; i < 6; i++) {
+        team.poke(i).gen() = team.gen();
+    }
+
+    quint8 count = 6;
+
+    if (network[1]) {
+        v.stream >> count;
+    }
+
+    for(int i=0;i<count;i++)
+    {
+        v.stream >> team.poke(i);
+    }
+
+    /* In case the sender overrode the gen parameter in the individual pokemons */
+    for (int i = 0; i < 6; i++) {
+        team.poke(i).gen() = team.gen();
+    }
+
+    return in;
+}
+
+PersonalTeam::PersonalTeam(): m_prop_gen(GenInfo::GenMax())
+{
+}
+
+LoginInfo::LoginInfo() : teams(0), channel(0), additionalChannels(0), trainerInfo(0), plugins(0)
+{
+}
+
+LoginInfo::~LoginInfo()
+{
+    delete teams, delete channel, delete additionalChannels, delete trainerInfo, delete plugins;
+}
+
+DataStream & operator >> (DataStream &in, LoginInfo &l)
+{
+//                HasClientType = 0,
+//                HasVersionNumber,
+//                HasReconnect,
+//                HasDefaultChannel,
+//                HasAdditionalChannels,
+//                HasColor,
+//                HasTrainerInfo,
+//                /* markerbit = 7 */
+//                HasTeams = 8,
+//                HasEventSpecification,
+//                HasPluginList
+    l.clientVersion = 0;
+    in >> l.version >> l.network;
+
+#define test(variable, flag) if (l.network[LoginCommand::flag]) { in >> l.variable;}
+#define load(variable, flag) if (l.network[LoginCommand::flag]) { l.variable = new std::remove_reference<decltype(*l.variable)>::type(); in >> *l.variable;}
+
+    test(clientType, HasClientType);
+    test(clientVersion, HasVersionNumber);
+    in >> l.trainerName;
+    in >> l.data;
+    test(reconnectBits, HasReconnect);
+
+    load(channel, HasDefaultChannel);
+    load(additionalChannels, HasAdditionalChannels);
+    test(trainerColor, HasColor);
+    load(trainerInfo, HasTrainerInfo);
+
+    if (l.network[LoginCommand::HasTeams]) {
+        l.teams = new QList<PersonalTeam>();
+        qint8 count;
+        in >> count;
+        for (int i = 0; i < count; i++) {
+            PersonalTeam t;
+            in >> t;
+            /* 6 teams tops */
+            if (i < 6) {
+                l.teams->push_back(t);
+            }
+        }
+    }
+
+    test(events, HasEventSpecification);
+    load(plugins, HasPluginList);
+#undef load
+#undef test
+
+    return in;
+}
+
+ChangeTeamInfo::ChangeTeamInfo()
+{
+    name = 0;
+    color = 0;
+    teams = 0;
+    team = 0;
+    teamNum = 0;
+    info = 0;
+}
+
+ServerInfo::ServerInfo()
+{
+    num = max = port = passwordProtected = 0;
+}
+
+DataStream & operator >> (DataStream &in, ServerInfo &info)
+{
+    in >> info.name >> info.desc >> info.num >> info.ip >> info.max >> info.port >> info.passwordProtected;
+
+    return in;
 }

@@ -9,6 +9,7 @@
 typedef MoveMechanics MM;
 typedef BattleSituation BS;
 typedef BattleCounterIndex BC;
+typedef BattleSituation::TurnMemory TM;
 
 struct MMDisable : public MM
 {
@@ -20,7 +21,7 @@ struct MMDisable : public MM
     static void daf(int s, int t, BS &b)
     {
         if (failOn(t, b))
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static bool failOn(int t, BS &b) {
@@ -29,7 +30,7 @@ struct MMDisable : public MM
         }
 
         /* Gen 1 Disable works even when opponent hasn't moved yet, but not with 0 PP in all moves */
-        if (b.gen() == 1) {
+        if (b.gen().num == 1) {
             for (int i = 0; i<4; i++) {
                 if (b.PP(t, i) > 0) {
                     return false;
@@ -44,7 +45,7 @@ struct MMDisable : public MM
         }
 
         int tu = poke(b,t)["LastMoveUsedTurn"].toInt();
-        if (tu + 1 < b.turn() || (tu + 1 == b.turn() && turn(b,t).value("HasMoved").toBool())) {
+        if (tu + 1 < b.turn() || (tu + 1 == b.turn() && fturn(b,t).contains(TM::HasMoved))) {
             return true;
         }
 
@@ -63,14 +64,14 @@ struct MMDisable : public MM
         return false;
     }
 
-    static BS::priorityBracket bracket(int gen) {
+    static BS::priorityBracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 12) : makeBracket(14, 0) ;
     }
 
     static void uas (int s, int t, BS &b) {
         int mv = poke(b,t)["LastMoveUsed"].toInt();
         /* Disable disables a random move in gen 1 */
-        if (b.gen() == 1) {
+        if (b.gen().num == 1) {
             /* Number of Moves on moveset */
             int moves = 4;
             if (b.move(t,1) == 0) {
@@ -128,7 +129,7 @@ struct MMDisable : public MM
     static void mp(int s, int, BS &b) {
         if(move(b,s) == poke(b,s)["DisabledMove"]) {
             turn(b,s)["ImpossibleToMove"] = true;
-            b.sendMoveMessage(28,1,s,0,s,b.move(s,poke(b,s)["MoveSlot"].toInt()));
+            b.sendMoveMessage(28,1,s,0,s,b.move(s,fpoke(b,s).lastMoveSlot));
         }
     }
 };

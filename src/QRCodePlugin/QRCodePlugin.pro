@@ -14,8 +14,12 @@ DEFINES += QRCODEPLUGIN_LIBRARY
 
 SOURCES += qrcodeplugin.cpp
 
+QMAKE_CXXFLAGS += "-std=c++0x -U__STRICT_ANSI__"
+
 HEADERS += qrcodeplugin.h\
-        QRCodePlugin_global.h
+        QRCodePlugin_global.h \
+    ../Teambuilder/plugininterface.h \
+    ../Teambuilder/engineinterface.h
 
 windows: {
     #on windows, qrencode is probably in that folder
@@ -53,3 +57,6 @@ unix:!symbian {
     }
     INSTALLS += target
 }
+
+macx:QMAKE_POST_LINK = (cd $$DESTDIR && ./fix_plugin_linking.py)
+

@@ -2,6 +2,9 @@
 #include "antidos.h"
 #include "server.h"
 #include "player.h"
+#ifdef USE_WEBCONF
+#include "webinterface.h"
+#endif
 
 Registry::Registry() {
     linecount = 0;
@@ -9,21 +12,34 @@ Registry::Registry() {
     QTextCodec::setCodecForCStrings(QTextCodec::codecForName("UTF-8"));
     QTextCodec::setCodecForTr(QTextCodec::codecForName("UTF-8"));
 
-    if (!forPlayers.listen(QHostAddress::Any, 5081))
+    if (!forPlayers[1].listen(QHostAddress::Any, 5090))
     {
-        printLine("Unable to listen to port 5081 (players)");
+        printLine("Unable to listen to port 5090 (players)");
     } else {
-        printLine("Starting to listen to port 5081");
+        printLine("Starting to listen to port 5090");
+    }
+    if (!forPlayers[0].listen(QHostAddress::Any, 8080))
+    {
+        printLine("Unable to listen to port 8080 (players)");
+    } else {
+        printLine("Starting to listen to port 8080");
     }
 
-    if (!forServers.listen(QHostAddress::Any, 5082))
+    if (!forServers.listen(QHostAddress::Any, 8081))
     {
-        printLine("Unable to listen to port 5082 (servers)");
+        printLine("Unable to listen to port 8081 (servers)");
     } else {
-        printLine("Starting to listen to port 5082");
+        printLine("Starting to listen to port 8081");
     }
 
-    connect(&forPlayers, SIGNAL(newConnection()), SLOT(incomingPlayer()));
+#ifdef USE_WEBCONF
+    web_interface = new RegistryWebInterface(this);
+#endif
+
+    registry_announcement = "";
+
+    connect(&forPlayers[0], SIGNAL(newConnection()), SLOT(incomingPlayer()));
+    connect(&forPlayers[1], SIGNAL(newConnection()), SLOT(incomingPlayer()));
     connect(&forServers, SIGNAL(newConnection()), SLOT(incomingServer()));
 
     AntiDos::obj()->init();
@@ -35,8 +51,10 @@ Registry::Registry() {
     t->setInterval(60*1000);
     t->start();
     connect(t, SIGNAL(timeout()), SLOT(updateTBanList()));
+    connect(t, SIGNAL(timeout()), SLOT(updateRegistryAnnouncement()));
     connect(&manager, SIGNAL(finished(QNetworkReply*)), SLOT(tbanListReceived(QNetworkReply*)));
     updateTBanList();
+    updateRegistryAnnouncement();
 }
 
 void Registry::printLine(const QString &line)
@@ -75,6 +93,21 @@ void Registry::tbanListReceived(QNetworkReply* reply){
     }
 
     reply->deleteLater();
+}
+
+void Registry::updateRegistryAnnouncement() {
+    QFile file("announcement.txt");
+    QString newAnnouncement;
+    if(file.open(QIODevice::ReadOnly)) {
+        QTextStream in(file.readAll());
+        newAnnouncement = in.readAll();
+        if(registry_announcement != newAnnouncement) {
+            printLine(QString("New Registry announcement: %1").arg(newAnnouncement));
+            registry_announcement = newAnnouncement;
+        }
+    }
+    file.close();
+    newAnnouncement.clear();
 }
 
 void Registry::incomingServer()
@@ -121,7 +154,7 @@ void Registry::incomingPlayer()
 {
     int id = freeid();
 
-    QTcpSocket * newconnection = forPlayers.nextPendingConnection();
+    QTcpSocket * newconnection = qobject_cast<QTcpServer*>(sender())->nextPendingConnection();
     QString ip = newconnection->peerAddress().toString();
 
     printLine(QString("Incoming player connection from IP %1 on slot %2").arg(ip).arg(id));
@@ -143,6 +176,12 @@ void Registry::incomingPlayer()
     Player *p = players[id] = new Player(id, newconnection);
 
     connect(players[id], SIGNAL(disconnection(int)), SLOT(disconnection(int)));
+
+    printLine("Sending the registry announcement");
+
+    if (registry_announcement.length() > 0) {
+        p->sendRegistryAnnouncement(registry_announcement);
+    }
 
     printLine("Sending the server list");
     foreach(Server *s, servers) {

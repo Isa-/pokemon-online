@@ -101,8 +101,9 @@ public:
     void fetchRankings(const QVariant &data, QObject *o, const char *slot);
     void processQuery(QSqlQuery *q, const QVariant &name, int type, WaitingObject *w);
     void insertMember(QSqlQuery *q, void *data, int type);
-    bool allowMode(int mode) const;
-    bool allowGen(int gen) const;
+    int getMode() const;
+    bool allowGen(Pokemon::gen gen) const;
+    Pokemon::gen gen() const {return m_gen;}
     int getClauses() const;
     int getMaxLevel() const;
     void fixTeam(TeamBattle &t) const;
@@ -158,7 +159,7 @@ private:
     int maxRestrictedPokes;
     int numberOfPokemons;
     int maxLevel;
-    int gen;
+    Pokemon::gen m_gen;
     QString banParentS;
     Tier *parent;
     QSet<int> bannedItems;

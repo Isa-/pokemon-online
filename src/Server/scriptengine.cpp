@@ -1,4 +1,4 @@
-#include "server.h"
+﻿#include "server.h"
 #include "player.h"
 #include "security.h"
 #include "antidos.h"
@@ -8,7 +8,7 @@
 #include "scriptengine.h"
 #include "../PokemonInfo/pokemoninfo.h"
 #include "../PokemonInfo/movesetchecker.h"
-#include "battle.h"
+#include "battlebase.h"
 #include <QRegExp>
 #include "analyze.h"
 #include "../Shared/config.h"
@@ -24,10 +24,10 @@ ScriptEngine::ScriptEngine(Server *s) {
     printfun.setData(sys);
     myengine.globalObject().setProperty("print", printfun);
     myengine.globalObject().setProperty(
-        "SESSION",
-        myengine.newQObject(mySessionDataFactory),
-        QScriptValue::ReadOnly | QScriptValue::Undeletable
-    );
+                "SESSION",
+                myengine.newQObject(mySessionDataFactory),
+                QScriptValue::ReadOnly | QScriptValue::Undeletable
+                );
 
 #ifndef PO_SCRIPT_SAFE_ONLY
     connect(&manager, SIGNAL(finished(QNetworkReply*)), SLOT(webCall_replyFinished(QNetworkReply*)));
@@ -139,9 +139,24 @@ bool ScriptEngine::testChannel(const QString &function, int id)
     return true;
 }
 
+bool ScriptEngine::testTeamCount(const QString &function, int id, int team)
+{
+    if (!testPlayer(function, id)) {
+        return false;
+    }
+
+    if (myserver->player(id)->teamCount() <= team) {
+        if (function.length() > 0)
+            warn(function, QString("Player numbered %1 only has %2 teams, so you can't access team #%3.").arg(id).arg(myserver->player(id)->teamCount()).arg(team));
+        return false;
+    }
+
+    return true;
+}
+
 bool ScriptEngine::testPlayer(const QString &function, int id)
 {
-    if (!loggedIn(id)) {
+    if (!myserver->playerExist(id)) {
         if (function.length() > 0)
             warn(function, QString("No player numbered %1 existing").arg(id));
         return false;
@@ -174,7 +189,7 @@ bool ScriptEngine::testRange(const QString &function, int val, int min, int max)
 
 void ScriptEngine::warn(const QString &function, const QString &message)
 {
-    printLine(QString("Script Warning in %1: %2").arg(function, message));
+    printLine(QString("Script Warning in sys.%1: %2").arg(function, message));
 }
 
 bool ScriptEngine::beforeChatMessage(int src, const QString &message, int channel)
@@ -187,6 +202,11 @@ void ScriptEngine::afterChatMessage(int src, const QString &message, int channel
     makeEvent("afterChatMessage", src, message, channel);
 }
 
+bool ScriptEngine::beforeNewPM(int src)
+{
+    return makeSEvent("beforeNewPM", src);
+}
+
 bool ScriptEngine::beforeSpectateBattle(int src, int p1, int p2)
 {
     return makeSEvent("beforeSpectateBattle", src, p1, p2);
@@ -194,7 +214,7 @@ bool ScriptEngine::beforeSpectateBattle(int src, int p1, int p2)
 
 void ScriptEngine::afterSpectateBattle(int src, int p1, int p2)
 {
-    makeEvent("beforeSpectateBattle", src, p1, p2);
+    makeEvent("afterSpectateBattle", src, p1, p2);
 }
 
 
@@ -225,12 +245,17 @@ void ScriptEngine::serverShutDown()
 
 bool ScriptEngine::beforeLogIn(int src)
 {
-    return makeSEvent("beforeLogIn", src);
+    bool login = makeSEvent("beforeLogIn", src);
+
+    if (login && exists(src)) {
+        mySessionDataFactory->handleUserLogIn(src);
+    }
+
+    return login;
 }
 
 void ScriptEngine::afterLogIn(int src)
 {
-    mySessionDataFactory->handleUserLogIn(src);
     makeEvent("afterLogIn", src);
 }
 
@@ -286,14 +311,14 @@ void ScriptEngine::afterChangeTeam(int src)
     makeEvent("afterChangeTeam", src);
 }
 
-bool ScriptEngine::beforeChangeTier(int src, const QString &oldTier, const QString &newTier)
+bool ScriptEngine::beforeChangeTier(int src, int slot, const QString &oldTier, const QString &newTier)
 {
-    return makeSEvent("beforeChangeTier", src, oldTier, newTier);
+    return makeSEvent("beforeChangeTier", src, slot, oldTier, newTier);
 }
 
-void ScriptEngine::afterChangeTier(int src, const QString &oldTier, const QString &newTier)
+void ScriptEngine::afterChangeTier(int src, int slot, const QString &oldTier, const QString &newTier)
 {
-    makeEvent("afterChangeTier", src, oldTier, newTier);
+    makeEvent("afterChangeTier", src, slot, oldTier, newTier);
 }
 
 bool ScriptEngine::beforeChallengeIssued(int src, int dest, const ChallengeInfo &c)
@@ -303,7 +328,7 @@ bool ScriptEngine::beforeChallengeIssued(int src, int dest, const ChallengeInfo 
 
     startStopEvent();
 
-    evaluate(myscript.property("beforeChallengeIssued").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode));
+    evaluate(myscript.property("beforeChallengeIssued").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode << c.team << c.desttier));
 
     return !endStopEvent();
 }
@@ -313,7 +338,7 @@ void ScriptEngine::afterChallengeIssued(int src, int dest, const ChallengeInfo &
     if (!myscript.property("afterChallengeIssued", QScriptValue::ResolveLocal).isValid())
         return;
 
-    evaluate(myscript.property("afterChallengeIssued").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode));
+    evaluate(myscript.property("afterChallengeIssued").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode << c.team << c.desttier));
 }
 
 bool ScriptEngine::beforeBattleMatchup(int src, int dest, const ChallengeInfo &c)
@@ -337,20 +362,20 @@ void ScriptEngine::afterBattleMatchup(int src, int dest, const ChallengeInfo &c)
 }
 
 
-void ScriptEngine::beforeBattleStarted(int src, int dest, const ChallengeInfo &c, int id)
+void ScriptEngine::beforeBattleStarted(int src, int dest, const ChallengeInfo &c, int id, int team1, int team2)
 {
     if (!myscript.property("beforeBattleStarted", QScriptValue::ResolveLocal).isValid())
         return;
 
-    evaluate(myscript.property("beforeBattleStarted").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode << id));
+    evaluate(myscript.property("beforeBattleStarted").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode << id << team1 << team2));
 }
 
-void ScriptEngine::afterBattleStarted(int src, int dest, const ChallengeInfo &c, int id)
+void ScriptEngine::afterBattleStarted(int src, int dest, const ChallengeInfo &c, int id, int team1, int team2)
 {
     if (!myscript.property("afterBattleStarted", QScriptValue::ResolveLocal).isValid())
         return;
 
-    evaluate(myscript.property("afterBattleStarted").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode << id));
+    evaluate(myscript.property("afterBattleStarted").call(myscript, QScriptValueList() << src << dest << c.clauses << c.rated << c.mode << id << team1 << team2));
 }
 
 QString battleDesc[3] = {
@@ -407,14 +432,14 @@ void ScriptEngine::afterPlayerKick(int src, int dest)
     makeEvent("afterPlayerKick", src, dest);
 }
 
-bool ScriptEngine::beforePlayerBan(int src, int dest)
+bool ScriptEngine::beforePlayerBan(int src, int dest, int time)
 {
-    return makeSEvent("beforePlayerBan", src, dest);
+    return makeSEvent("beforePlayerBan", src, dest, time);
 }
 
-void ScriptEngine::afterPlayerBan(int src, int dest)
+void ScriptEngine::afterPlayerBan(int src, int dest, int time)
 {
-    makeEvent("afterPlayerBan", src, dest);
+    makeEvent("afterPlayerBan", src, dest, time);
 }
 
 bool ScriptEngine::beforePlayerAway(int src, bool away)
@@ -434,59 +459,60 @@ void ScriptEngine::evaluate(const QScriptValue &expr)
     }
 }
 
-void ScriptEngine::sendAll(const QString &mess)
+void ScriptEngine::sendAll(const QString &message)
 {
-    myserver->sendAll(mess);
+    myserver->broadCast(message);
 }
 
-void ScriptEngine::sendAll(const QString &mess, int channel)
+void ScriptEngine::sendAll(const QString &message, int channel)
 {
     if (testChannel("sendAll(mess, channel)", channel)) {
-        myserver->sendChannelMessage(channel, mess);
+        myserver->broadCast(message, channel);
     }
 }
 
 void ScriptEngine::sendMessage(int id, const QString &mess)
 {
     if (testPlayer("sendMessage(id, mess)", id)) {
-        myserver->sendMessage(id, mess);
+        myserver->broadCast(mess, Server::NoChannel, Server::NoSender, false, id);
     }
 }
 
 void ScriptEngine::sendMessage(int id, const QString &mess, int channel)
 {
     if (testChannel("sendMessage(id, mess, channel)", channel) && testPlayer("sendMessage(id, mess, channel)", id) &&
-        testPlayerInChannel("sendMessage(id, mess, channel)", id, channel))
+            testPlayerInChannel("sendMessage(id, mess, channel)", id, channel))
     {
-        myserver->sendChannelMessage(id, channel, mess);
+        myserver->broadCast(mess, channel, Server::NoSender, false, id);
     }
 }
 
 void ScriptEngine::sendHtmlAll(const QString &mess)
 {
-    myserver->sendAll(mess, false, true);
+    myserver->broadCast(mess, Server::NoChannel, Server::NoSender, true);
 }
 
 void ScriptEngine::sendHtmlAll(const QString &mess, int channel)
 {
-    if (testChannel("sendAll(mess, channel)", channel)) {
-        myserver->sendChannelMessage(channel, mess, false, true);
+    if (testChannel("sendHtmlAll(mess, channel)", channel)) {
+
+        myserver->broadCast(mess, channel, Server::NoSender, true);
     }
 }
 
 void ScriptEngine::sendHtmlMessage(int id, const QString &mess)
 {
-    if (testPlayer("sendMessage(id, mess)", id)) {
-        myserver->sendMessage(id, mess, true);
+    if (testPlayer("sendHtmlMessage(id, mess)", id)) {
+        myserver->broadCast(mess, Server::NoChannel, Server::NoSender, true, id);
     }
 }
 
 void ScriptEngine::sendHtmlMessage(int id, const QString &mess, int channel)
 {
-    if (testChannel("sendMessage(id, mess, channel)", channel) && testPlayer("sendMessage(id, mess, channel)", id) &&
-        testPlayerInChannel("sendMessage(id, mess, channel)", id, channel))
+    if (testChannel("sendHtmlMessage(id, mess, channel)", channel) && testPlayer("sendMessage(id, mess, channel)", id) &&
+            testPlayerInChannel("sendHtmlMessage(id, mess, channel)", id, channel))
     {
-        myserver->sendChannelMessage(id, channel, mess, true);
+        myserver->broadCast(mess, channel, Server::NoSender, true, id);
     }
 }
 
@@ -500,9 +526,16 @@ void ScriptEngine::kick(int id)
 void ScriptEngine::kick(int id, int chanid)
 {
     if (testPlayer("kick(id, channel)", id) && testChannel("kick(id, channel)", chanid)
-        && testPlayerInChannel("kick(id, channel)", id, chanid))
+            && testPlayerInChannel("kick(id, channel)", id, chanid))
     {
         myserver->leaveRequest(id, chanid);
+    }
+}
+
+void ScriptEngine::disconnect(int id)
+{
+    if (testPlayer("disconnect(id)", id)) {
+        myserver->disconnectPlayer(id);
     }
 }
 
@@ -587,12 +620,14 @@ void ScriptEngine::changeRating(const QString& name, const QString& tier, int ne
         TierMachine::obj()->changeRating(name, tier, newRating);
 }
 
-void ScriptEngine::changeTier(int id, const QString &tier)
+void ScriptEngine::changeTier(int id, int team, const QString &tier)
 {
-    if (!TierMachine::obj()->exists(tier))
+    if (!testPlayer("changeTier", id) || !testTeamCount("changeTier", id, team))
+        return;
+    if (!TierMachine::obj()->exists(tier)) {
         printLine("Script Warning in sys.changeTier(id, tier): no such tier as " + tier);
-    else if (testPlayer("changeTier(id, tier)", id)) {
-        myserver->player(id)->executeTierChange(tier);
+    } else {
+        myserver->player(id)->executeTierChange(team, tier);
     }
 }
 
@@ -601,65 +636,68 @@ void ScriptEngine::reloadTiers()
     TierMachine::obj()->load();
 }
 
-void ScriptEngine::changePokeItem(int id, int slot, int item)
+void ScriptEngine::changePokeItem(int id, int team, int slot, int item)
 {
-    if (!testPlayer("changePokeItem(id, slot, item)", id) || !testRange("changePokeItem(id, slot, item)", slot, 0, 5))
+    if (!testPlayer("changePokeItem", id) || !testRange("changePokeItem", slot, 0, 5) || !testTeamCount("changePokeItem", id, team))
         return;
     if (!ItemInfo::Exists(item))
         return;
-    myserver->player(id)->team().poke(slot).item() = item;
+    myserver->player(id)->team(team).poke(slot).item() = item;
 }
 
-void ScriptEngine::changePokeNum(int id, int slot, int num)
+void ScriptEngine::changePokeNum(int id, int team, int slot, int num)
 {
-    if (!testPlayer("changePokeNum(id, slot, item)", id) || !testRange("changePokeNum(id, slot, num)", slot, 0, 5))
+    if (!testPlayer("changePokeNum", id) || !testRange("changePokeNum", slot, 0, 5) || !testTeamCount("changePokeNum", id, team))
         return;
-    if (!PokemonInfo::Exists(num, myserver->player(id)->gen()))
+    if (!PokemonInfo::Exists(num, myserver->player(id)->gen(team)))
         return;
-    myserver->player(id)->team().poke(slot).num() = num;
+    myserver->player(id)->team(team).poke(slot).num() = num;
 }
 
-void ScriptEngine::changePokeLevel(int id, int slot, int level)
+void ScriptEngine::changePokeLevel(int id, int team, int slot, int level)
 {
-    if (!testPlayer("changePokeLevel(id, slot, level)", id) || !testRange("changePokeLevel(id, slot, level)", slot, 0, 5) || !testRange("changePokeLevel(id, slot, level)", level, 1, 100))
+    if (!testPlayer("changePokeLevel", id) || !testRange("changePokeLevel", slot, 0, 5) || !testRange("changePokeLevel", level, 1, 100) || !testTeamCount("changePokeLevel", id, team))
         return;
     Player *p = myserver->player(id);
-    p->team().poke(slot).level() = level;
-    p->team().poke(slot).updateStats(p->gen());
+    p->team(team).poke(slot).level() = level;
+    p->team(team).poke(slot).updateStats(p->gen(team));
 }
 
-void ScriptEngine::changePokeMove(int id, int pslot, int mslot, int move)
+void ScriptEngine::changePokeMove(int id, int team, int pslot, int mslot, int move)
 {
-    if (!testPlayer("changePokeLevel(id, pokeslot, moveslot, move)", id) || !testRange("changePokeLevel(id, pokeslot, moveslot, move)", pslot, 0, 5) || !testRange("changePokeLevel(id, pokeslot, moveslot, move)", mslot, 0, 3))
+    if (!testPlayer("changePokeLevel", id) || !testRange("changePokeLevel", pslot, 0, 5) || !testRange("changePokeLevel", mslot, 0, 3) || !testTeamCount("changePokeLevel", id, team))
         return;
-    if (!MoveInfo::Exists(move, GEN_MAX))
-        return;
-    Player *p = myserver->player(id);
-    p->team().poke(pslot).move(mslot).num() = move;
-    p->team().poke(pslot).move(mslot).load(p->gen());
-}
-
-void ScriptEngine::changePokeGender(int id, int pokeslot, int gender)
-{
-    if (!testPlayer("changePokeGender(id, pokeslot, gender)", id) || !testRange("changePokeGender(id, pokeslot, gender)", pokeslot, 0, 5) || !testRange("changePokeGender(id, pokeslot, gender)", gender, 0, 2))
+    if (!MoveInfo::Exists(move, GenInfo::GenMax()))
         return;
     Player *p = myserver->player(id);
-    p->team().poke(pokeslot).gender() = gender;
+    p->team(team).poke(pslot).move(mslot).num() = move;
+    p->team(team).poke(pslot).move(mslot).load(p->gen(team));
 }
 
-void ScriptEngine::changePokeName(int id, int pokeslot, const QString &name)
+void ScriptEngine::changePokeGender(int id, int team, int pokeslot, int gender)
 {
-    if (!testPlayer("changePokeName(id, pokeslot, name)", id)|| !testRange("changePokeName(id, pokeslot, name)", pokeslot, 0, 5))
+    if (!testPlayer("changePokeGender", id) || !testRange("changePokeGender", pokeslot, 0, 5) || !testRange("changePokeGender", gender, 0, 2) || !testTeamCount("changePokeGender", id, team))
         return;
     Player *p = myserver->player(id);
-    p->team().poke(pokeslot).nick() = name;
+    p->team(team).poke(pokeslot).gender() = gender;
 }
 
-bool ScriptEngine::hasLegalTeamForTier(int id, const QString &tier)
+void ScriptEngine::changePokeName(int id, int team, int pokeslot, const QString &name)
 {
+    if (!testPlayer("changePokeName", id)|| !testTeamCount("changePokeName", id, team) || !testRange("changePokeName", pokeslot, 0, 5))
+        return;
+    Player *p = myserver->player(id);
+    p->team(team).poke(pokeslot).nick() = name;
+}
+
+bool ScriptEngine::hasLegalTeamForTier(int id, int team, const QString &tier)
+{
+    if(!testPlayer("hasLegalTeamForTier", id) || !testTeamCount("hasLegalTeamForTier", id, team)) {
+        return false;
+    }
     if (!TierMachine::obj()->exists(tier))
         return false;
-    return TierMachine::obj()->isValid(myserver->player(id)->team(),tier);
+    return TierMachine::obj()->isValid(myserver->player(id)->team(team),tier);
 }
 
 int ScriptEngine::maxAuth(const QString &ip)
@@ -688,8 +726,8 @@ QScriptValue ScriptEngine::memoryDump()
     ret += QString("Waiting Objects\n\tFree Objects> %1\n\tTotal Objects> %2\n").arg(WaitingObjects::freeObjects.count()).arg(WaitingObjects::objectCount);
     ret += QString("Battles\n\tActive> %1\n\tRated Battles History> %2\n").arg(myserver->mybattles.count()).arg(myserver->lastRatedIps.count());
     ret += QString("Antidos\n\tConnections Per IP> %1\n\tLogins per IP> %2\n\tTransfers Per Id> %3\n\tSize of Transfers> %4\n\tKicks per IP> %5\n").arg(AntiDos::obj()->connectionsPerIp.count()).arg(
-            AntiDos::obj()->loginsPerIp.count()).arg(AntiDos::obj()->transfersPerId.count()).arg(AntiDos::obj()->sizeOfTransfers.count())
-           .arg(AntiDos::obj()->kicksPerIp.count());
+                AntiDos::obj()->loginsPerIp.count()).arg(AntiDos::obj()->transfersPerId.count()).arg(AntiDos::obj()->sizeOfTransfers.count())
+            .arg(AntiDos::obj()->kicksPerIp.count());
     ret += QString("-------------------------\n-------------------------\n");
 
     foreach (QString tier, TierMachine::obj()->tierList().split('\n')) {
@@ -698,6 +736,11 @@ QScriptValue ScriptEngine::memoryDump()
     }
 
     return ret;
+}
+
+int ScriptEngine::disconnectedPlayers()
+{
+    return myserver->mynames.size() - myserver->numberOfPlayersLoggedIn;
 }
 
 void ScriptEngine::exportMemberDatabase()
@@ -720,24 +763,26 @@ bool ScriptEngine::dbRegistered(const QString &name)
     return SecurityManager::member(name).isProtected();
 }
 
-void ScriptEngine::callLater(const QString &expr, int delay)
+int ScriptEngine::callLater(const QString &expr, int delay)
 {
     if (delay <= 0) {
-        return;
+        return -1;
     }
-	//qDebug() << "Call Later in " << delay << expr;
+
     QTimer *t = new QTimer();
 
     timerEvents[t] = expr;
     t->setSingleShot(true);
     t->start(delay*1000);
     connect(t, SIGNAL(timeout()), SLOT(timer()), Qt::DirectConnection);
+
+    return t->timerId();
 }
 
-void ScriptEngine::callQuickly(const QString &expr, int delay)
+int ScriptEngine::callQuickly(const QString &expr, int delay)
 {
     if (delay <= 0) {
-        return;
+        return -1;
     }
 
     QTimer *t = new QTimer(this);
@@ -746,17 +791,35 @@ void ScriptEngine::callQuickly(const QString &expr, int delay)
     t->setSingleShot(true);
     t->start(delay);
     connect(t, SIGNAL(timeout()), SLOT(timer()));
+
+    return t->timerId();
+}
+
+int ScriptEngine::intervalTimer(const QString &expr, int delay)
+{
+    if (delay <= 0) {
+        return -1;
+    }
+
+    QTimer *t = new QTimer();
+
+    timerEvents[t] = expr;
+    t->setSingleShot(false);
+    t->start(delay);
+    connect(t, SIGNAL(timeout()), SLOT(timer()), Qt::DirectConnection);
+
+    return t->timerId();
 }
 
 void ScriptEngine::timer()
 {
-	//qDebug() << "timer()";
     QTimer *t = (QTimer*) sender();
-	//qDebug() << timerEvents[t];
     eval(timerEvents[t]);
 
-    timerEvents.remove(t);
-    t->deleteLater();
+    if (t->isSingleShot()) {
+        timerEvents.remove(t);
+        t->deleteLater();
+    }
 }
 
 void ScriptEngine::timer_step()
@@ -764,26 +827,112 @@ void ScriptEngine::timer_step()
     this->stepEvent();
 }
 
-void ScriptEngine::delayedCall(const QScriptValue &func, int delay)
+int ScriptEngine::quickCall(const QScriptValue &func, int delay)
 {
-    if (delay <= 0) return;
-    if (func.isFunction()) {
-        QTimer *t = new QTimer(this);
-        timerEventsFunc[t] = func;
-        t->setSingleShot(true);
-        t->start(delay*1000);
-        connect(t, SIGNAL(timeout()), SLOT(timerFunc()));
+    if (delay <= 0) {
+        return -1;
     }
+
+    if (!func.isFunction()) {
+        warn("quickCall(func, delay)", "No function passed to first parameter.");
+        return -1;
+    }
+
+    QTimer *t = new QTimer(this);
+    timerEventsFunc[t] = func;
+    t->setSingleShot(true);
+    t->start(delay);
+    connect(t, SIGNAL(timeout()), SLOT(timerFunc()));
+
+    return t->timerId();
+}
+
+int ScriptEngine::delayedCall(const QScriptValue &func, int delay)
+{
+    if (delay <= 0) {
+        return -1;
+    }
+
+    if (!func.isFunction()) {
+        warn("delayedCall(func, delay)", "No function passed to first parameter.");
+        return -1;
+    }
+
+    QTimer *t = new QTimer(this);
+    timerEventsFunc[t] = func;
+    t->setSingleShot(true);
+    t->start(delay*1000);
+    connect(t, SIGNAL(timeout()), SLOT(timerFunc()));
+
+    return t->timerId();
+}
+
+int ScriptEngine::intervalCall(const QScriptValue &func, int delay)
+{
+    if (delay <= 0) {
+        return -1;
+    }
+
+    if (!func.isFunction()) {
+        warn("intervalCall(func, delay)", "No function passed to first parameter.");
+        return -1;
+    }
+
+    QTimer *t = new QTimer(this);
+    timerEventsFunc[t] = func;
+    t->setSingleShot(false);
+    t->start(delay);
+    connect(t, SIGNAL(timeout()), SLOT(timerFunc()));
+
+    return t->timerId();
 }
 
 void ScriptEngine::timerFunc()
 {
     QTimer *t = (QTimer*) sender();
     timerEventsFunc[t].call();
-    timerEventsFunc.remove(t);
-    t->deleteLater();
+
+    if (t->isSingleShot()) {
+        timerEventsFunc.remove(t);
+        t->deleteLater();
+    }
 }
 
+bool ScriptEngine::stopTimer(int timerId)
+{
+    QHashIterator <QTimer*, QString> it (timerEvents);
+    while (it.hasNext()) {
+        it.next();
+        QTimer *timer = it.key();
+
+        if (timer->timerId() == timerId) {
+            timer->stop();
+            timer->blockSignals(true);
+
+            timerEvents.remove(timer);
+            timer->deleteLater();
+            return true; // Timer found.
+        }
+    }
+
+    // Checking the function timers.
+    QHashIterator <QTimer*, QScriptValue> itfunc (timerEventsFunc);
+    while (itfunc.hasNext()) {
+        itfunc.next();
+        QTimer *timer = itfunc.key();
+
+        if (timer->timerId() == timerId) {
+            timer->stop();
+            timer->blockSignals(true);
+
+            timerEventsFunc.remove(timer);
+            timer->deleteLater();
+            return true; // Timer found.
+        }
+    }
+
+    return false; // No timer found.
+}
 
 QScriptValue ScriptEngine::eval(const QString &script)
 {
@@ -792,7 +941,7 @@ QScriptValue ScriptEngine::eval(const QString &script)
 
 QScriptValue ScriptEngine::auth(int id)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
         return myserver->auth(id);
@@ -858,14 +1007,38 @@ QScriptValue ScriptEngine::dbLastOn(const QString &name)
     if (!SecurityManager::exist(name)) {
         return myengine.undefinedValue();
     } else {
-        return QString(SecurityManager::member(name).date);
+        return SecurityManager::member(name).date;
     }
 }
 
+QScriptValue ScriptEngine::dbExpire(const QString &name)
+{
+    if(!SecurityManager::exist(name)) {
+        return myengine.undefinedValue();
+    } else {
+        QDate tempDate;
+        tempDate = QDate::fromString(SecurityManager::member(name).date, "yyyy-MM-dd");
+        return myserver->playerDeleteDays() - tempDate.daysTo(QDate::currentDate());
+    }
+}
+
+QScriptValue ScriptEngine::dbTempBanTime(const QString &name)
+{
+    if (!SecurityManager::exist(name)) {
+        return myengine.undefinedValue();
+    } else {
+        return SecurityManager::member(name).ban_expire_time - QDateTime::currentDateTimeUtc().toTime_t();
+    }
+}
+
+int ScriptEngine::dbExpiration()
+{
+    return myserver->playerDeleteDays();
+}
 
 QScriptValue ScriptEngine::battling(int id)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
         return myserver->player(id)->battling();
@@ -874,7 +1047,7 @@ QScriptValue ScriptEngine::battling(int id)
 
 QScriptValue ScriptEngine::away(int id)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
         return myserver->player(id)->away();
@@ -883,32 +1056,46 @@ QScriptValue ScriptEngine::away(int id)
 
 QScriptValue ScriptEngine::getColor(int id)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
         return myserver->player(id)->color().name();
     }
 }
 
-QScriptValue ScriptEngine::tier(int id)
+QScriptValue ScriptEngine::tier(int id, int team)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if(!testPlayer("tier", id) || !testTeamCount("tier", id, team)) {
         return myengine.undefinedValue();
-    } else {
-        return myserver->player(id)->tier();
     }
+    return myserver->player(id)->team(team).tier;
 }
 
-QScriptValue ScriptEngine::ranking(int id)
+bool ScriptEngine::hasTier(int id, const QString &tier)
 {
-    Player *p = myserver->player(id);
-    return ranking(p->name(), p->tier());
+    if (!testPlayer("hasTier", id)) {
+        return false;
+    }
+
+    return myserver->player(id)->hasTier(tier);
 }
 
-QScriptValue ScriptEngine::ratedBattles(int id)
+QScriptValue ScriptEngine::ranking(int id, int team)
 {
+    if(!testPlayer("ranking", id) || !testTeamCount("ranking", id, team)) {
+        return myengine.undefinedValue();
+    }
     Player *p = myserver->player(id);
-    return ratedBattles(p->name(), p->tier());
+    return ranking(p->name(), p->team(team).tier);
+}
+
+QScriptValue ScriptEngine::ratedBattles(int id, int team)
+{
+    if(!testPlayer("ratedBattles", id) || !testTeamCount("ratedBattles", id, team)) {
+        return myengine.undefinedValue();
+    }
+    Player *p = myserver->player(id);
+    return ratedBattles(p->name(), p->team(team).tier);
 }
 
 QScriptValue ScriptEngine::ranking(const QString &name, const QString &tier)
@@ -934,20 +1121,16 @@ QScriptValue ScriptEngine::totalPlayersByTier(const QString &tier)
 
 QScriptValue ScriptEngine::ladderRating(int id, const QString &tier)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
-        if (tier.isEmpty()) {
-            return myserver->player(id)->rating();
-        } else {
-            return TierMachine::obj()->rating(myserver->player(id)->name(), tier);
-        }
+        return TierMachine::obj()->rating(myserver->player(id)->name(), tier);
     }
 }
 
 QScriptValue ScriptEngine::ladderEnabled(int id)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
         return myserver->player(id)->ladder();
@@ -956,7 +1139,7 @@ QScriptValue ScriptEngine::ladderEnabled(int id)
 
 QScriptValue ScriptEngine::ip(int id)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
         return myserver->player(id)->ip();
@@ -965,7 +1148,7 @@ QScriptValue ScriptEngine::ip(int id)
 
 QScriptValue ScriptEngine::proxyIp(int id)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!exists(id)) {
         return myengine.undefinedValue();
     } else {
         return myserver->player(id)->proxyIp();
@@ -992,13 +1175,39 @@ void ScriptEngine::hostInfo_Ready(const QHostInfo &myInfo)
     }
 }
 
-QScriptValue ScriptEngine::gen(int id)
+QScriptValue ScriptEngine::gen(int id, int team)
 {
-    if (!myserver->playerLoggedIn(id)) {
+    if (!testTeamCount("gen(id, team)", id, team)) {
         return myengine.undefinedValue();
     } else {
-        return myserver->player(id)->gen();
+        return myserver->player(id)->gen(team).num;
     }
+}
+
+QScriptValue ScriptEngine::subgen(int id, int team)
+{
+    if (!testTeamCount("subgen(id, team)", id, team)) {
+        return myengine.undefinedValue();
+    } else {
+        return myserver->player(id)->gen(team).subnum;
+    }
+}
+
+QScriptValue ScriptEngine::teamCount(int id)
+{
+    if (!testPlayer("teamCount(id)", id)) {
+        return myengine.undefinedValue();
+    } else {
+        return myserver->player(id)->teamCount();
+    }
+}
+
+QScriptValue ScriptEngine::generation(int genNum, int subNum)
+{
+    if(testRange("generation(genNum, subNum)", genNum, GEN_MIN, GenInfo::GenMax()) && testRange("generation(genNum, subNum)", subNum, 0, GenInfo::NumberOfSubgens(genNum) - 1)) {
+        return GenInfo::Version(Pokemon::gen(genNum, subNum));
+    }
+    return myengine.undefinedValue();
 }
 
 QScriptValue ScriptEngine::name(int id)
@@ -1015,7 +1224,12 @@ QScriptValue ScriptEngine::id(const QString &name)
     if (!myserver->nameExist(name)) {
         return myengine.undefinedValue();
     } else {
-        return myserver->id(name);
+        int id = myserver->id(name);
+        if (!loggedIn(id)) {
+            return myengine.undefinedValue();
+        } else {
+            return id;
+        }
     }
 }
 
@@ -1112,7 +1326,7 @@ QScriptValue ScriptEngine::natureNum(const QString &name)
 
 QScriptValue ScriptEngine::ability(int num)
 {
-    if (num >= 0 && num < AbilityInfo::NumberOfAbilities()) {
+    if (num >= 0 && num < AbilityInfo::NumberOfAbilities(GenInfo::GenMax())) {
         return AbilityInfo::Name(num);
     } else {
         return myengine.undefinedValue();
@@ -1141,56 +1355,60 @@ QScriptValue ScriptEngine::genderNum(QString genderName)
 QString ScriptEngine::gender(int genderNum)
 {
     switch(genderNum) {
-        case 0:
-            return "genderless";
-        case 1:
-            return "male";
-        case 2:
-            return "female";
+    case 0:
+        return "genderless";
+    case 1:
+        return "male";
+    case 2:
+        return "female";
     }
     return "";
 }
 
-QScriptValue ScriptEngine::teamPoke(int id, int index)
+QScriptValue ScriptEngine::teamPoke(int id, int team, int index)
 {
-    if (!loggedIn(id) || index < 0 || index >= 6) {
+    if(!testPlayer("teamPoke", id) || !testTeamCount("teamPoke", id, team)) {
+        return myengine.undefinedValue();
+    }    if (index < 0 || index >= 6) {
         return myengine.undefinedValue();
     } else {
-        return myserver->player(id)->team().poke(index).num().toPokeRef();
+        return myserver->player(id)->team(team).poke(index).num().toPokeRef();
     }
 }
 
-QScriptValue ScriptEngine::teamPokeLevel(int id, int index)
+QScriptValue ScriptEngine::teamPokeLevel(int id, int team, int index)
 {
-    if (!loggedIn(id) || index < 0 || index >= 6) {
+    if(!testPlayer("teamPokeLevel", id) || !testTeamCount("teamPokeLevel", id, team)) {
+        return myengine.undefinedValue();
+    }
+    if (index < 0 || index >= 6) {
         return myengine.undefinedValue();
     } else {
-        return myserver->player(id)->team().poke(index).level();
+        return myserver->player(id)->team(team).poke(index).level();
     }
 }
 
 
-bool ScriptEngine::hasTeamPoke(int id, int pokemonnum)
+bool ScriptEngine::hasTeamPoke(int id, int team, int pokemonnum)
 {
-    if (!testPlayer("hasTeamPoke(id, poke)",id)) {
-        return false;
-    }
-    TeamBattle &t = myserver->player(id)->team();
-    for (int i = 0; i < 6; i++) {
-        if (t.poke(i).num() == pokemonnum) {
-            return true;
+    if(!testPlayer("hasTeamItem", id) || !testTeamCount("hasTeamItem", id, team)) {
+        TeamBattle &t = myserver->player(id)->team(team);
+        for (int i = 0; i < 6; i++) {
+            if (t.poke(i).num() == pokemonnum) {
+                return true;
+            }
         }
+        return false;
     }
     return false;
 }
 
-QScriptValue ScriptEngine::indexOfTeamPoke(int id, int pokenum)
+QScriptValue ScriptEngine::indexOfTeamPoke(int id, int team, int pokenum)
 {
-    if (!loggedIn(id)) {
-        printLine("Script Warning in sys.indexOfTeamPoke(id, pokenum): no such player logged in with id " + QString::number(id));
+    if(!testPlayer("indexOfTeamPoke", id) || !testTeamCount("indexOfTeamPoke", id, team)) {
         return myengine.undefinedValue();
     }
-    TeamBattle &t = myserver->player(id)->team();
+    TeamBattle &t = myserver->player(id)->team(team);
     for (int i = 0; i < 6; i++) {
         if (t.poke(i).num() == pokenum) {
             return i;
@@ -1199,59 +1417,76 @@ QScriptValue ScriptEngine::indexOfTeamPoke(int id, int pokenum)
     return myengine.undefinedValue();
 }
 
-bool ScriptEngine::hasDreamWorldAbility(int id, int index)
+bool ScriptEngine::hasDreamWorldAbility(int id, int team, int index)
 {
-    if (!loggedIn(id) || index < 0 || index >= 6) {
-        return false;
-    } else {
-        PokeBattle &p = myserver->player(id)->team().poke(index);
+    if(!testPlayer("hasDreamWorldAbility", id) || !testTeamCount("hasDreamWorldAbility", id, team)) {
+        if (index < 0 || index >= 6) {
+            return false;
+        } else {
+            PokeBattle &p = myserver->player(id)->team(team).poke(index);
 
-        AbilityGroup ag = PokemonInfo::Abilities(p.num(), 5);
+            AbilityGroup ag = PokemonInfo::Abilities(p.num(), 5);
 
-        return p.ability() != ag.ab(0) && p.ability() != ag.ab(1);
-    }
-}
-
-bool ScriptEngine::compatibleAsDreamWorldEvent(int id, int index)
-{
-    if (!loggedIn(id) || index < 0 || index >= 6) {
-        return false;
-    } else {
-        PokeBattle &p = myserver->player(id)->team().poke(index);
-
-        return MoveSetChecker::isValid(p.num(),5,p.move(0).num(),p.move(1).num(),p.move(2).num(),p.move(3).num(),p.ability(),p.gender(), p.level(), true);
-    }
-}
-
-QScriptValue ScriptEngine::teamPokeMove(int id, int pokeindex, int moveindex)
-{
-    if (!loggedIn(id) || pokeindex < 0 || moveindex < 0 || pokeindex >= 6 || moveindex >= 4) {
-        return myengine.undefinedValue();
-    }
-    return myserver->player(id)->team().poke(pokeindex).move(moveindex).num();
-}
-
-bool ScriptEngine::hasTeamPokeMove(int id, int pokeindex, int movenum)
-{
-    if (!loggedIn(id) || pokeindex < 0 || pokeindex >= 6) {
-        return false;
-    }
-    PokeBattle &poke = myserver->player(id)->team().poke(pokeindex);
-
-    for (int i = 0; i < 4; i++) {
-        if (poke.move(i).num() == movenum) {
-            return true;
+            return p.ability() != ag.ab(0) && p.ability() != ag.ab(1);
         }
+        return false;
     }
     return false;
 }
 
-QScriptValue ScriptEngine::indexOfTeamPokeMove(int id, int pokeindex, int movenum)
+bool ScriptEngine::compatibleAsDreamWorldEvent(int id, int team, int index)
 {
-    if (!loggedIn(id) || pokeindex < 0 || pokeindex >= 6) {
+    if(!testPlayer("compatibleAsDreamWorldEvent", id) || !testTeamCount("compatibleAsDreamWorldEvent", id, team)) {
+        if (index < 0 || index >= 6) {
+            return false;
+        } else {
+            PokeBattle &p = myserver->player(id)->team(team).poke(index);
+
+            return MoveSetChecker::isValid(p.num(),5,p.move(0).num(),p.move(1).num(),p.move(2).num(),p.move(3).num(),p.ability(),p.gender(), p.level(), true);
+        }
+        return false;
+    }
+    return false;
+}
+
+QScriptValue ScriptEngine::teamPokeMove(int id, int team, int pokeindex, int moveindex)
+{
+    if(!testPlayer("teamPokeMove", id) || !testTeamCount("teamPokeMove", id, team)) {
         return myengine.undefinedValue();
     }
-    PokeBattle &poke = myserver->player(id)->team().poke(pokeindex);
+    if (pokeindex < 0 || moveindex < 0 || pokeindex >= 6 || moveindex >= 4) {
+        return myengine.undefinedValue();
+    }
+    return myserver->player(id)->team(team).poke(pokeindex).move(moveindex).num();
+}
+
+bool ScriptEngine::hasTeamPokeMove(int id, int team, int pokeindex, int movenum)
+{
+    if(testPlayer("hasTeamPokeMove", id) || !testTeamCount("hasTeamPokeMove", id, team)) {
+        if (pokeindex < 0 || pokeindex >= 6) {
+            return false;
+        }
+        PokeBattle &poke = myserver->player(id)->team(team).poke(pokeindex);
+
+        for (int i = 0; i < 4; i++) {
+            if (poke.move(i).num() == movenum) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return false;
+}
+
+QScriptValue ScriptEngine::indexOfTeamPokeMove(int id, int team, int pokeindex, int movenum)
+{
+    if(!testPlayer("indexOfTeamPokeMove", id) || !testTeamCount("indexOfTeamPokeMove", id, team)) {
+        return myengine.undefinedValue();
+    }
+    if (pokeindex < 0 || pokeindex >= 6) {
+        return myengine.undefinedValue();
+    }
+    PokeBattle &poke = myserver->player(id)->team(team).poke(pokeindex);
 
     for (int i = 0; i < 4; i++) {
         if (poke.move(i).num() == movenum) {
@@ -1261,39 +1496,40 @@ QScriptValue ScriptEngine::indexOfTeamPokeMove(int id, int pokeindex, int movenu
     return myengine.undefinedValue();
 }
 
-bool ScriptEngine::hasTeamMove(int id, int movenum)
+bool ScriptEngine::hasTeamMove(int id, int team, int movenum)
 {
-    if (!loggedIn(id)) {
-        printLine("Script Warning in sys.hasTeamMove(id, pokenum): no such player logged in with id " + QString::number(id));
+    if(testPlayer("hasTeamMove", id) || testTeamCount("hasTeamMove", id, team)) {
+        for (int i = 0; i < 6; i++) {
+            if (hasTeamPokeMove(id,team,i,movenum))
+                return true;
+        }
         return false;
-    }
-    for (int i = 0; i < 6; i++) {
-        if (hasTeamPokeMove(id,i,movenum))
-            return true;
     }
     return false;
 }
 
-QScriptValue ScriptEngine::teamPokeItem(int id, int index)
+QScriptValue ScriptEngine::teamPokeItem(int id, int team, int index)
 {
-    if (!loggedIn(id) || index < 0 || index >= 6) {
+    if(!testPlayer("teamPokeItem", id) || !testTeamCount("teamPokeItem", id, team)) {
+        return myengine.undefinedValue();
+    }
+    if (index < 0 || index >= 6) {
         return myengine.undefinedValue();
     } else {
-        return myserver->player(id)->team().poke(index).item();
+        return myserver->player(id)->team(team).poke(index).item();
     }
 }
 
-bool ScriptEngine::hasTeamItem(int id, int itemnum)
+bool ScriptEngine::hasTeamItem(int id, int team, int itemnum)
 {
-    if (!loggedIn(id)) {
-        printLine("Script Warning in sys.hasTeamPoke(id, pokenum): no such player logged in with id " + QString::number(id));
-        return false;
-    }
-    TeamBattle &t = myserver->player(id)->team();
-    for (int i = 0; i < 6; i++) {
-        if (t.poke(i).item() == itemnum) {
-            return true;
+    if(testPlayer("hasTeamItem", id) && testTeamCount("hasTeamItem", id, team)) {
+        TeamBattle &t = myserver->player(id)->team(team);
+        for (int i = 0; i < 6; i++) {
+            if (t.poke(i).item() == itemnum) {
+                return true;
+            }
         }
+        return false;
     }
     return false;
 }
@@ -1413,57 +1649,61 @@ QScriptValue ScriptEngine::playersOfChannel(int channelid)
     }
 }
 
-QScriptValue ScriptEngine::teamPokeNature(int id, int index)
+QScriptValue ScriptEngine::teamPokeNature(int id, int team, int index)
 {
-    if (!loggedIn(id) || index < 0 || index >= 6) {
+    if(!testPlayer("teamPokeNature", id) || !testTeamCount("teamPokeNature", id, team)) {
+        return myengine.undefinedValue();
+    }
+    if (index < 0 || index >= 6) {
         return myengine.undefinedValue();
     } else {
-        return myserver->player(id)->team().poke(index).nature();
+        return myserver->player(id)->team(team).poke(index).nature();
     }
 }
 
-QScriptValue ScriptEngine::teamPokeEV(int id, int index, int stat)
+QScriptValue ScriptEngine::teamPokeEV(int id, int team, int index, int stat)
 {
-    if (!loggedIn(id) || index < 0 || index >= 6 || stat < 0 || stat >= 6) {
+    if (!testPlayer("teamPokeEV", id) || !testTeamCount("teamPokeEV", id, team)) {
+        return myengine.undefinedValue();
+    }
+    if (index < 0 || index >= 6 || stat < 0 || stat >= 6) {
         return myengine.undefinedValue();
     } else {
-        return myserver->player(id)->team().poke(index).evs()[stat];
+        return myserver->player(id)->team(team).poke(index).evs()[stat];
     }
 }
 
-QScriptValue ScriptEngine::teamPokeDV(int id, int index, int stat)
+QScriptValue ScriptEngine::teamPokeDV(int id, int team, int index, int stat)
 {
-    if (!loggedIn(id) || index < 0 || index >= 6 || stat < 0 || stat >= 6) {
+    if (!testPlayer("teamPokeDV", id) || !testTeamCount("teamPokeDV", id, team)) {
+        return myengine.undefinedValue();
+    }
+    if (index < 0 || index >= 6 || stat < 0 || stat >= 6) {
         return myengine.undefinedValue();
     } else {
-        return myserver->player(id)->team().poke(index).dvs()[stat];
+        return myserver->player(id)->team(team).poke(index).dvs()[stat];
     }
 }
 
-void ScriptEngine::setTeamPokeDV(int id, int slot, int stat, int newValue)
+void ScriptEngine::changeTeamPokeDV(int id, int team, int slot, int stat, int newValue)
 {
-    if(loggedIn(id) && slot >=0 && slot <=5 && stat >=0 && stat <= 5 && newValue >= 0 && newValue <= 31) {
-        myserver->player(id)->team().poke(slot).dvs()[stat] = newValue;
+    if(!testPlayer("changeTeamPokeDV", id) || !testTeamCount("changeTeamPokeDV", id, team) || (slot >=0 && slot <=5 && stat >=0 && stat <= 5 && newValue >= 0 && newValue <= 31)) {
+        myserver->player(id)->team(team).poke(slot).dvs()[stat] = newValue;
     }
 }
 
-void ScriptEngine::changeTeamPokeIV(int id, int slot, int stat, int newValue)
+void ScriptEngine::changeTeamPokeEV(int id, int team, int slot, int stat, int newValue)
 {
-    return this->setTeamPokeDV(id, slot, stat, newValue);
-}
-
-void ScriptEngine::changeTeamPokeEV(int id, int slot, int stat, int newValue)
-{
-    if(loggedIn(id) && slot >=0 && slot <6 && stat >=0 && stat <6 && newValue >= 0 && newValue <= 255) {
+    if(!testPlayer("changeTeamPokeEV", id) || !testTeamCount("changeTeamPokeEV", id, team) || (slot >=0 && slot <6 && stat >=0 && stat <6 && newValue >= 0 && newValue <= 255)) {
         int total = 0;
         for (int i=0; i<6; i++) {
             if (i == stat)
                 total += newValue;
             else
-                total += myserver->player(id)->team().poke(slot).evs()[i];
+                total += myserver->player(id)->team(team).poke(slot).evs()[i];
         }
         if (total <= 510)
-            myserver->player(id)->team().poke(slot).evs()[stat] = newValue;
+            myserver->player(id)->team(team).poke(slot).evs()[stat] = newValue;
     }
 }
 
@@ -1471,12 +1711,22 @@ int ScriptEngine::rand(int min, int max)
 {
     if (min == max)
         return min;
-    return (::rand()%(max-min)) + min;
+    return ::floor(myengine.globalObject().property("Math").property("random").call().toNumber() * (max - min) + min);
 }
 
 int ScriptEngine::numPlayers()
 {
     return myserver->numberOfPlayersLoggedIn;
+}
+
+int ScriptEngine::playersInMemory()
+{
+    return myserver->myplayers.size();
+}
+
+bool ScriptEngine::exists(int id)
+{
+    return myserver->playerExist(id);
 }
 
 bool ScriptEngine::loggedIn(int id)
@@ -1503,16 +1753,6 @@ void ScriptEngine::shutDown()
     Server::print("Scripted server shutdown");
     serverShutDown();
     exit(0);
-}
-
-void ScriptEngine::modifyTypeChart(int type_attack, int type_defend, const QString &modifier)
-{
-    QString compare_to = modifier.toLower();
-    QString modifiers[] = { "none", "ineffective", "normal", "effective" };
-    int real_modifiers[] = { 0, 1, 2, 4 };
-    int i = 0;
-    while((i < 4) && (modifiers[i] != compare_to)) i++;
-    if(i < 4) TypeInfo::modifyTypeChart(type_attack, type_defend, real_modifiers[i]);
 }
 
 QScriptValue ScriptEngine::type(int id)
@@ -1602,7 +1842,7 @@ QScriptValue ScriptEngine::getScript()
 int ScriptEngine::pokeType1(int id, int gen)
 {
     int result = Pokemon::Curse;
-    if((gen >= GEN_MIN) && (gen <= GEN_MAX)) {
+    if((gen >= GEN_MIN) && (gen <= GenInfo::GenMax())) {
         result = PokemonInfo::Type1(Pokemon::uniqueId(id), gen);
     }else{
         warn("pokeType1", "generation is not supported.");
@@ -1613,32 +1853,12 @@ int ScriptEngine::pokeType1(int id, int gen)
 int ScriptEngine::pokeType2(int id, int gen)
 {
     int result = Pokemon::Curse;
-    if((gen >= GEN_MIN) && (gen <= GEN_MAX)) {
+    if((gen >= GEN_MIN) && (gen <= GenInfo::GenMax())) {
         result = PokemonInfo::Type2(Pokemon::uniqueId(id), gen);
     }else{
         warn("pokeType2", "generation is not supported.");
     }
     return result;
-}
-
-void ScriptEngine::modifyMovePower(int moveNum, unsigned char power, int gen)
-{
-    MoveInfo::setPower(moveNum, power, gen);
-}
-
-void ScriptEngine::modifyMoveAccuracy(int moveNum, char accuracy, int gen)
-{
-    MoveInfo::setAccuracy(moveNum, accuracy, gen);
-}
-
-void ScriptEngine::modifyMovePP(int moveNum, char pp, int gen)
-{
-    MoveInfo::setPP(moveNum, pp, gen);
-}
-
-void ScriptEngine::modifyMovePriority(int moveNum, qint8 priority, int gen)
-{
-    MoveInfo::setPriority(moveNum, priority, gen);
 }
 
 QScriptValue ScriptEngine::banList()
@@ -1655,6 +1875,21 @@ QScriptValue ScriptEngine::banList()
 void ScriptEngine::ban(QString name)
 {
     SecurityManager::ban(name);
+    if(loggedIn(myserver->id(name))) {
+        myserver->kick(myserver->id(name));
+    }
+}
+
+void ScriptEngine::tempBan(QString name, int time)
+{
+    if(time < 0) {
+        return;
+    }
+    SecurityManager::setBanExpireTime(name, QDateTime::currentDateTimeUtc().toTime_t() + time * 60);
+    SecurityManager::ban(name);
+    if(loggedIn(myserver->id(name))) {
+        myserver->kick(myserver->id(name));
+    }
 }
 
 void ScriptEngine::unban(QString name)
@@ -1670,7 +1905,7 @@ void ScriptEngine::battleSetup(int src, int dest, int battleId)
 void ScriptEngine::prepareWeather(int battleId, int weatherId)
 {
     if((weatherId >= 0) && (weatherId <= 4)) {
-        BattleSituation * battle = myserver->getBattle(battleId);
+        BattleBase * battle = myserver->getBattle(battleId);
         if (battle) {
             battle->setupLongWeather(weatherId);
         }else{
@@ -1707,27 +1942,44 @@ QScriptValue ScriptEngine::weather(int weatherId)
     }
 }
 
-void ScriptEngine::setAnnouncement(const QString &html, int id) {
+void ScriptEngine::setAnnouncement(const QString &html, int id)
+{
     if (testPlayer("setAnnouncment(html, id)", id)) {
-        myserver->setAnnouncement(id, html); }
+        myserver->setAnnouncement(id, html);
     }
-void ScriptEngine::setAnnouncement(const QString &html) {
-        myserver->setAllAnnouncement(html);
-    }
+}
+void ScriptEngine::setAnnouncement(const QString &html)
+{
+    myserver->setAllAnnouncement(html);
+}
 
-void ScriptEngine::changeAnnouncement(const QString &html) {
-        QSettings settings("config", QSettings::IniFormat);
-        settings.setValue("server_announcement", html);
-        myserver->announcementChanged(html);
-    }
+void ScriptEngine::changeAnnouncement(const QString &html)
+{
+    QSettings settings("config", QSettings::IniFormat);
+    settings.setValue("Server/Announcement", html);
+    myserver->announcementChanged(html);
+}
 
 void ScriptEngine::makeServerPublic(bool isPublic)
 {
     myserver->regPrivacyChanged(!isPublic);
 }
 
-QScriptValue ScriptEngine::getAnnouncement() {
-    return myserver->serverAnnouncement;
+QScriptValue ScriptEngine::getAnnouncement()
+{
+    return QString::fromUtf8(myserver->serverAnnouncement);
+}
+
+void ScriptEngine::changeDescription(const QString &html)
+{
+    QSettings settings("config", QSettings::IniFormat);
+    settings.setValue("Server/Description", html);
+    myserver->regDescChanged(html);
+}
+
+QString ScriptEngine::getDescription()
+{
+    return myserver->description();
 }
 
 /* Causes crash...
@@ -1738,118 +1990,112 @@ void ScriptEngine::setTimer(int milisec) {
     step_timer->start(ms);
     }
 */
-int ScriptEngine::teamPokeAbility(int id, int slot)
+int ScriptEngine::teamPokeAbility(int id, int team, int slot)
 {
-    if (!loggedIn(id) || slot < 0 || slot >= 6) {
+    if (!testPlayer("teamPokeAbility", id) || slot < 0 || slot >= 6 || !testTeamCount("teamPokeAbility", id, team)) {
         return Ability::NoAbility;
     } else {
-        return myserver->player(id)->team().poke(slot).ability();
+        return myserver->player(id)->team(team).poke(slot).ability();
     }
 }
 
 void ScriptEngine::changeName(int playerId, QString newName)
 {
-    if (!loggedIn(playerId)) return;
+    if (!loggedIn(playerId)) {
+        return;
+    }
+
     myserver->player(playerId)->setName(newName);
     myserver->sendPlayer(playerId);
 }
 
 void ScriptEngine::changeInfo(int playerId, QString newInfo)
 {
-    if (!loggedIn(playerId)) return;
+    if (!loggedIn(playerId)) {
+        return;
+    }
+
     myserver->player(playerId)->setInfo(newInfo);
     myserver->sendPlayer(playerId);
 }
 
+// TODO: Player info will be separate from teams. Update it. -- Mystra
 QScriptValue ScriptEngine::info(int playerId)
 {
     if (loggedIn(playerId)) {
-        return myserver->player(playerId)->team().info;
+        return myserver->player(playerId)->info();
     }else{
         return myengine.undefinedValue();
     }
 }
 
-void ScriptEngine::modifyPokeAbility(int id, int slot, int ability, int gen)
+void ScriptEngine::changePokeAbility(int id, int team, int slot, int ability)
 {
-    bool res = PokemonInfo::modifyAbility(Pokemon::uniqueId(id), slot, ability, gen);
-    if (!res) {
-        warn(
-            "modifyPokeAbility",
-            QString("slot out of range or pokemon do not exist in gen %1.").arg(QString::number(gen))
-        );
-    }
-}
-
-void ScriptEngine::changePokeAbility(int id, int slot, int ability)
-{
-    if (!testPlayer("changePokeAbility", id) || !testRange("changePokeAbility", slot, 0, 5)) {
+    if (!testPlayer("changePokeAbility", id) || !testRange("changePokeAbility", slot, 0, 5) || !testTeamCount("changePokeAbility", id, team)) {
         return;
     }
-    myserver->player(id)->team().poke(slot).ability() = ability;
+    myserver->player(id)->team(team).poke(slot).ability() = ability;
 }
 
 QScriptValue ScriptEngine::pokeAbility(int poke, int slot, int gen)
 {
     Pokemon::uniqueId pokemon(poke);
     if (PokemonInfo::Exists(pokemon, gen)
-        && (slot >= 0) && (slot <= 2)
-        && (gen >= GEN_MIN) && (gen <= GEN_MAX)) {
+            && (slot >= 0) && (slot <= 2)
+            && (gen >= GEN_MIN) && (gen <= GenInfo::GenMax())) {
         return PokemonInfo::Abilities(pokemon, gen).ab(slot);
     }
     return myengine.undefinedValue();
 }
 
-void ScriptEngine::changePokeHappiness(int id, int slot, int value)
+void ScriptEngine::changePokeHappiness(int id, int team, int slot, int value)
 {
-    if (!testPlayer("changePokeHappiness", id)
-        || !testRange("changePokeHappiness", slot, 0, 5)
-        || !testRange("changePokeHappiness", value, 0, 255)) {
+    if (!testPlayer("changePokeHappiness", id) || !testRange("changePokeHappiness", slot, 0, 5) || !testRange("changePokeHappiness", value, 0, 255) || !testTeamCount("changePokeHappiness", id, team)) {
         return;
     }
-    myserver->player(id)->team().poke(slot).happiness() = value;
+    myserver->player(id)->team(team).poke(slot).happiness() = value;
 }
 
-void ScriptEngine::changePokeShine(int id, int slot, bool value)
+void ScriptEngine::changePokeShine(int id, int team, int slot, bool value)
 {
-    if (!testPlayer("changePokeShine", id) || !testRange("changePokeShine", slot, 0, 5)) {
+    if (!testPlayer("changePokeShine", id) || !testRange("changePokeShine", slot, 0, 5) || !testTeamCount("changePokeShine", id, team)) {
         return;
     }
-    myserver->player(id)->team().poke(slot).shiny() = value;
+    myserver->player(id)->team(team).poke(slot).shiny() = value;
 }
 
-void ScriptEngine::changePokeNature(int id, int slot, int nature)
+void ScriptEngine::changePokeNature(int id, int team, int slot, int nature)
 {
-    if(!testPlayer("changePokeNature(id, slot, forme)", id) || !testRange("changePokeNature(id, slot, forme)",slot, 0, 15))
+    if(!testPlayer("changePokeNature", id) || !testRange("changePokeNature",slot, 0, 15) || !testTeamCount("changePokeNature", id, team))
         return;
-      // Ugly, we don't have NatureInfo::Exists(nature) or we do?
-    myserver->player(id)->team().poke(slot).nature() = nature;
+    // Ugly, we don't have NatureInfo::Exists(nature) or we do?
+    myserver->player(id)->team(team).poke(slot).nature() = nature;
 }
 
-QScriptValue ScriptEngine::teamPokeGender(int id, int slot)
+QScriptValue ScriptEngine::teamPokeGender(int id, int team, int slot)
 {
-    if (!testPlayer("teamPokeGender", id) || !testRange("teamPokeGender", slot, 0, 5)) {
+    if (!testPlayer("teamPokeGender", id) || !testRange("teamPokeGender", slot, 0, 5) || !testTeamCount("teamPokeGender", id, team)) {
         return myengine.undefinedValue();
     }
-    return myserver->player(id)->team().poke(slot).gender();
+    return myserver->player(id)->team(team).poke(slot).gender();
 }
 
-QScriptValue ScriptEngine::teamPokeNick(int id, int index)
+QScriptValue ScriptEngine::teamPokeNick(int id, int team, int index)
 {
-    if(!loggedIn(id) || index < 0 ||index >= 6) {
+    if(!loggedIn(id) || index < 0 ||index >= 6 || !testTeamCount("teamPokeNick", id, team)) {
         return myengine.undefinedValue();
     }else{
-        return myserver->player(id)->team().poke(index).nick();
+        return myserver->player(id)->team(team).poke(index).nick();
     }
 }
 
 void ScriptEngine::inflictStatus(int battleId, bool toFirstPlayer, int slot, int status)
 {
     if (!testRange("inflictStatus", status, Pokemon::Fine, Pokemon::Koed)
-        || !testRange("inflictStatus", slot, 0, 5)) {
+            || !testRange("inflictStatus", slot, 0, 5)) {
         return;
     }
-    BattleSituation * battle = myserver->getBattle(battleId);
+    BattleBase * battle = myserver->getBattle(battleId);
     if (battle) {
         if (toFirstPlayer) {
             battle->changeStatus(0, slot, status);
@@ -1861,17 +2107,14 @@ void ScriptEngine::inflictStatus(int battleId, bool toFirstPlayer, int slot, int
     }
 }
 
-void ScriptEngine::modifyPokeStat(int poke, int stat, quint8 value)
-{
-    bool res = PokemonInfo::modifyBaseStat(Pokemon::uniqueId(poke), stat, value);
-    if (!res) {
-        warn("modifyPokeStat", "unable to modify.");
-    }
-}
-
 void ScriptEngine::updateRatings()
 {
     TierMachine::obj()->processDailyRun();
+}
+
+void ScriptEngine::updateDatabase()
+{
+    SecurityManager::processDailyRun(myserver->playerDeleteDays());
 }
 
 void ScriptEngine::resetLadder(const QString &tier)
@@ -1885,15 +2128,15 @@ void ScriptEngine::resetLadder(const QString &tier)
 
     /* Updates the rating of all the players of the tier */
     foreach(Player *p, myserver->myplayers) {
-        if (p->tier() == tier)
-            p->findRating();
+        if (p->hasTier(tier))
+            p->findRating(tier);
     }
 }
 
 void ScriptEngine::synchronizeTierWithSQL(const QString &tier)
 {
     if (!TierMachine::obj()->exists(tier)) {
-        warn("resetLadder", "tier doesn't exist");
+        warn("synchronizeTierWithSQL", "tier doesn't exist");
         return;
     }
 
@@ -1901,12 +2144,12 @@ void ScriptEngine::synchronizeTierWithSQL(const QString &tier)
 
     /* Updates the rating of all the players of the tier */
     foreach(Player *p, myserver->myplayers) {
-        if (p->tier() == tier)
-            p->findRating();
+        if (p->hasTier(tier))
+            p->findRating(tier);
     }
 }
 
-void ScriptEngine::forceBattle(int player1, int player2, int clauses, int mode, bool is_rated)
+void ScriptEngine::forceBattle(int player1, int player2, int team1, int team2, int clauses, int mode, bool is_rated)
 {
     if (!loggedIn(player1) || !loggedIn(player2)) {
         warn("forceBattle", "player is not online.");
@@ -1914,6 +2157,9 @@ void ScriptEngine::forceBattle(int player1, int player2, int clauses, int mode, 
     }
     if (player1 == player2) {
         warn("forceBattle", "player1 == player2");
+        return;
+    }
+    if(!testTeamCount("forceBattle", player1, team1) || !testTeamCount("forceBattle", player2, team2)) {
         return;
     }
     if (!testRange("forceBattle", mode, ChallengeInfo::ModeFirst, ChallengeInfo::ModeLast)) {
@@ -1924,8 +2170,8 @@ void ScriptEngine::forceBattle(int player1, int player2, int clauses, int mode, 
     c.clauses = clauses;
     c.mode = mode;
     c.rated = is_rated;
-   
-    myserver->startBattle(player1, player2, c);
+
+    myserver->startBattle(player1, player2, c, team1, team2);
 }
 
 void ScriptEngine::sendNetworkCommand(int id, int command)
@@ -2008,6 +2254,42 @@ void ScriptEngine::removeVal(const QString &file, const QString &key)
 {
     QSettings s(file, QSettings::IniFormat);
     s.remove("Script_"+key);
+}
+
+QScriptValue ScriptEngine::filesForDirectory (const QString &dir)
+{
+    QDir directory(dir);
+
+    if(!directory.exists()) {
+        return myengine.undefinedValue();
+    }
+
+    QStringList files = directory.entryList(QDir::Files, QDir::Name);
+    QScriptValue ret = myengine.newArray(files.count());
+
+    for (int i = 0; i < files.size(); i++) {
+        ret.setProperty(i, files[i]);
+    }
+
+    return ret;
+}
+
+QScriptValue ScriptEngine::dirsForDirectory (const QString &dir)
+{
+    QDir directory(dir);
+
+    if(!directory.exists()) {
+        return myengine.undefinedValue();
+    }
+
+    QStringList dirs = directory.entryList(QDir::Dirs, QDir::Name);
+    QScriptValue ret = myengine.newArray(dirs.size());
+
+    for (int i = 0; i < dirs.size(); i++) {
+        ret.setProperty(i, dirs[i]);
+    }
+
+    return ret;
 }
 
 void ScriptEngine::appendToFile(const QString &fileName, const QString &content)
@@ -2244,12 +2526,12 @@ int ScriptEngine::system(const QString &command)
 }
 #endif // PO_SCRIPT_NO_SYSTEM
 
-QScriptValue ScriptEngine::teamPokeShine(int id, int slot)
+QScriptValue ScriptEngine::teamPokeShine(int id, int team, int slot)
 {
-    if (!testPlayer("teamPokeShine", id) || !testRange("teamPokeShine", slot, 0, 5)) {
+    if (!testPlayer("teamPokeShine", id) || !testRange("teamPokeShine", slot, 0, 5) || !testTeamCount("teamPokeShine", slot, team)) {
         return myengine.undefinedValue();
     }
-    return myserver->player(id)->team().poke(slot).shiny();
+    return myserver->player(id)->team(team).poke(slot).shiny();
 }
 
 int ScriptEngine::moveType(int moveNum, int gen)
@@ -2265,4 +2547,40 @@ QString ScriptEngine::serverVersion()
 bool ScriptEngine::isServerPrivate()
 {
     return myserver->isPrivate();
+}
+
+QString ScriptEngine::sha1(const QString &text) {
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    hash.addData(text.toUtf8());
+    return hash.result().toHex();
+}
+
+QString ScriptEngine::md4(const QString &text) {
+    QCryptographicHash hash(QCryptographicHash::Md4);
+    hash.addData(text.toUtf8());
+    return hash.result().toHex();
+}
+
+QString ScriptEngine::md5(const QString &text) {
+    QCryptographicHash hash(QCryptographicHash::Md5);
+    hash.addData(text.toUtf8());
+    return hash.result().toHex();
+}
+
+QString ScriptEngine::hexColor(const QString &colorname)
+{
+    if (!QColor::isValidColor(colorname)) {
+        return "#000000";
+    }
+
+    QColor color = QColor(colorname);
+
+    return color.name();
+}
+
+bool ScriptEngine::validColor(const QString &color)
+{
+    QColor colorName = QColor(color);
+
+    return colorName.isValid();
 }

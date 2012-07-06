@@ -35,7 +35,12 @@ SOURCES += main.cpp \
     sessiondatafactory.cpp \
     battlepluginstruct.cpp \
     battlecounters.cpp \
-    moves/moves1.cpp
+    moves/moves1.cpp \
+    battlebase.cpp \
+    battlerby.cpp \
+    rbymoves.cpp \
+    mechanicsbase.cpp \
+    modswindow.cpp
 !CONFIG(nogui):SOURCES += mainwindow.cpp \
     playerswindow.cpp \
     sqlconfig.cpp \
@@ -94,7 +99,15 @@ HEADERS += player.h \
     battlecounters.h \
     battlecounterindex.h \
     battlefunctions.h \
-    ../Shared/battlecommands.h
+    ../Shared/battlecommands.h \
+    ../Utilities/coreclasses.h \
+    playerstructs.h \
+    networkutilities.h \
+    battlebase.h \
+    battlerby.h \
+    rbymoves.h \
+    mechanicsbase.h \
+    modswindow.h
 !CONFIG(nogui):HEADERS += mainwindow.h \
     battlingoptions.h \
     ../Utilities/otherwidgets.h \
@@ -113,7 +126,7 @@ CONFIG(sfml) {
     DEFINES += SFML_SOCKETS
     SOURCES += sfmlsocket.cpp
     LIBS += -L/usr/local/lib \
-        -lboost_system-mt
+        -lboost_system
 }
 CONFIG(nowelcome):DEFINES += PO_NO_WELCOME
 CONFIG(safeonlyscript):DEFINES += PO_SCRIPT_SAFE_ONLY
@@ -125,6 +138,19 @@ macx {
    #ICON = pokemononline.icns
    QMAKE_INFO_PLIST = Info.plist
    QMAKE_LFLAGS_SONAME  = -Wl,-install_name,@executable_path/../Frameworks/
+   LINKLIBS = libutilities.1.0.0.dylib libpokemonlib.1.0.0.dylib libbattlelib.1.0.0.dylib
+   QMAKE_POST_LINK = mkdir -p $${DESTDIR}/$${TARGET}.app/Contents/Frameworks;
+   for(L, LINKLIBS) {
+       QMAKE_POST_LINK += cp -f $${DESTDIR}/$${L} $${DESTDIR}/$${TARGET}.app/Contents/Frameworks/;
+       QMAKE_POST_LINK += ln -s $${L} $${DESTDIR}/$${TARGET}.app/Contents/Frameworks/$$replace(L, 1.0.0, 1);
+   }
+   QMAKE_POST_LINK += macdeployqt $${DESTDIR}/$${TARGET}.app -verbose=3
+
 }
 
+QMAKE_CXXFLAGS += "-std=c++0x -U__STRICT_ANSI__"
+
 include(../Shared/Common.pri)
+
+FORMS += \
+    modswindow.ui

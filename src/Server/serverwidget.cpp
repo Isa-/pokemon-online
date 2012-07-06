@@ -20,6 +20,7 @@
 #include "sqlconfig.h"
 #include "pluginmanager.h"
 #include "plugininterface.h"
+#include "modswindow.h"
 
 ServerWidget::ServerWidget(Server *myserver)
 {
@@ -66,9 +67,10 @@ QMenuBar* ServerWidget::createMenuBar() {
     options->addAction("&Anti DoS", this, SLOT(openAntiDos()));
     options->addAction("&Config", this, SLOT(openConfig()));
     options->addAction("&Scripts", this, SLOT(openScriptWindow()));
+    options->addAction("&Mods", this, SLOT(openModsWindow()));
     options->addAction("&Tiers", this, SLOT(openTiersWindow()));
     options->addAction("&Battle Config", this, SLOT(openBattleConfigWindow()));
-    options->addAction("&SQL Config", this, SLOT(openSqlConfigWindow()));
+    options->addAction("S&QL Config", this, SLOT(openSqlConfigWindow()));
     QMenu *plugins = bar->addMenu("&Plugins");
     plugins->addAction("Plugin &Manager", this, SLOT(openPluginManager()));
     plugins->addSeparator();
@@ -100,7 +102,13 @@ void ServerWidget::showContextMenu(const QPoint &p) {
         QSignalMapper *mymapper2 = new QSignalMapper(menu);
         QAction *viewinfo2 = menu->addAction("&Ban", mymapper2, SLOT(map()));
         mymapper2->setMapping(viewinfo2, item->id());
-        connect(mymapper2, SIGNAL(mapped(int)), server, SLOT(ban(int)));
+        connect(mymapper2, SIGNAL(mapped(int)), SLOT(tempBanDialog(int)));
+
+        QSignalMapper *mymapper4 = new QSignalMapper(menu);
+        QAction *viewinfo3 = menu->addAction("&Temp Ban", mymapper4, SLOT(map()));
+        mymapper4->setMapping(viewinfo3, item->id());
+        connect(mymapper4, SIGNAL(mapped(int)), this, SLOT(openTempBanDialog(int)));
+
 
         menu->exec(mapToGlobal(p));
     }
@@ -109,6 +117,12 @@ void ServerWidget::showContextMenu(const QPoint &p) {
 void ServerWidget::clearChat()
 {
     mymainchat->clear();
+}
+
+void ServerWidget::openTempBanDialog(int pId)
+{
+    int time = QInputDialog::getInteger(this, "Temp Ban " + server->name(pId), "Input the amount of minutes that you want to ban " + server->name(pId), 1, 1, 3600);
+    server->tempBan(pId, 0, time);
 }
 
 void ServerWidget::openPluginConfig()
@@ -129,7 +143,7 @@ void ServerWidget::openPluginConfig()
 
 void ServerWidget::openPlayers()
 {
-    PlayersWindow *w = new PlayersWindow();
+    PlayersWindow *w = new PlayersWindow(0, server->playerDeleteDays());
 
     w->show();
 
@@ -165,14 +179,25 @@ void ServerWidget::openConfig()
     connect(w, SIGNAL(privacyChanged(int)), server, SLOT(regPrivacyChanged(int)));
     connect(w, SIGNAL(announcementChanged(QString)), server, SLOT(announcementChanged(QString)));
     connect(w, SIGNAL(logSavingChanged(bool)), server, SLOT(logSavingChanged(bool)));
+    connect(w, SIGNAL(inactivePlayersDeleteDaysChanged(int)), server, SLOT(inactivePlayersDeleteDaysChanged(int)));
     connect(w, SIGNAL(mainChanChanged(QString)), server, SLOT(mainChanChanged(QString)));
     connect(w, SIGNAL(latencyChanged(bool)), server, SLOT(TCPDelayChanged(bool)));
     connect(w, SIGNAL(safeScriptsChanged(bool)), server, SLOT(safeScriptsChanged(bool)));
+    connect(w, SIGNAL(overactiveToggleChanged(bool)), server, SLOT(overactiveToggleChanged(bool)));
     connect(w, SIGNAL(proxyServersChanged(QString)), server, SLOT(proxyServersChanged(QString)));
     connect(w, SIGNAL(serverPasswordChanged(QString)), server, SLOT(serverPasswordChanged(QString)));
     connect(w, SIGNAL(usePasswordChanged(bool)), server, SLOT(usePasswordChanged(bool)));
     connect(w, SIGNAL(showTrayPopupChanged(bool)), server, SLOT(showTrayPopupChanged(bool)));
     connect(w, SIGNAL(minimizeToTrayChanged(bool)), server, SLOT(minimizeToTrayChanged(bool)));
+}
+
+void ServerWidget::openModsWindow()
+{
+    ModsWindow *w = new ModsWindow();
+
+    w->show();
+
+    connect(w, SIGNAL(modChanged(QString)), server, SLOT(changeDbMod(QString)));
 }
 
 void ServerWidget::openScriptWindow()

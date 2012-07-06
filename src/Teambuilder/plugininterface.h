@@ -2,6 +2,7 @@
 #define PLUGININTERFACE_H
 
 #include <QString>
+#include <QHash>
 
 /* An interface Client Plugins must follow.
    Remember that plugins are still very experimental and that this file is going to be subject to
@@ -9,10 +10,28 @@
 
 class QWidget;
 class MainEngineInterface;
+class ClientInterface;
+
+class OnlineClientPlugin : public QObject
+{
+public:
+    virtual ~OnlineClientPlugin(){}
+
+    virtual void clientStartUp() {}
+    virtual void clientShutDown() {}
+
+    typedef int (OnlineClientPlugin::*Hook) ();
+
+    virtual QHash<QString, Hook> getHooks(){
+        return QHash<QString, Hook>();
+    }
+};
 
 class ClientPlugin
 {
 public:
+    virtual ~ClientPlugin() {}
+
     /* The name of the option the plugin would take in the menu bar.
        Also appears as the name of the plugin */
     virtual QString pluginName() const = 0;
@@ -25,6 +44,10 @@ public:
 
     virtual bool hasConfigurationWidget() const {
         return false;
+    }
+
+    virtual OnlineClientPlugin *getOnlinePlugin(ClientInterface*) {
+        return NULL;
     }
 };
 

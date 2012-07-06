@@ -9,6 +9,8 @@
 #include <QMessageBox>
 #include <QFileDialog>
 
+#include "../Utilities/coreclasses.h"
+
 PokeBaseStats::PokeBaseStats(quint8 base_hp, quint8 base_att, quint8 base_def, quint8 base_spAtt, quint8 base_spDef, quint8 base_spd)
 {
     setBaseHp(base_hp);
@@ -92,7 +94,6 @@ void PokeBaseStats::setBaseStat(int stat, quint8 base)
 PokeGeneral::PokeGeneral()
 {
     num() = Pokemon::uniqueId();
-    gen() = 5;
     //default for non-bugged programs
     m_genderAvail = Pokemon::NeutralAvail;
     m_types[0] = Pokemon::Curse;
@@ -156,7 +157,6 @@ int PokeGeneral::type2() const
 
 PokePersonal::PokePersonal()
 {
-    this->gen() = 5;
     reset();
 }
 
@@ -164,7 +164,10 @@ void PokePersonal::setMove(int moveNum, int moveSlot, bool check) throw(QString)
 {
     if (moveNum == move(moveSlot))
         return;
+
     if (check && moveNum != 0) {
+        m_moves[moveSlot] = Move::NoMove;
+
         if (hasMove(moveNum))
             throw QObject::tr("%1 already has move %2.").arg(nickname(), MoveInfo::Name(moveNum));
         else if (!PokemonInfo::Moves(num(), gen()).contains(moveNum))
@@ -200,7 +203,7 @@ void PokePersonal::runCheck()
             ability() = ab.ab(0);
     }
 
-    if (gen() == 2)
+    if (gen().num == 2)
         controlGender();
 
     if (!ItemInfo::Exists(item(), gen())) {
@@ -217,7 +220,7 @@ void PokePersonal::runCheck()
         }
     }
 
-    if (gen() == 2) {
+    if (gen().num == 2) {
         setEV(SpDefense, EV(SpAttack));
         setDV(SpDefense, DV(SpAttack));
     }
@@ -250,6 +253,7 @@ void PokePersonal::runCheck()
 
         MoveSetChecker::isValid(num(), gen(), move(0), move(1), move(2), move(3), ability(), gender(), level(), false, &invalidMoves);
     }
+
 }
 
 int PokePersonal::addMove(int moveNum, bool check) throw(QString)
@@ -260,6 +264,15 @@ int PokePersonal::addMove(int moveNum, bool check) throw(QString)
             return i;
         }
     throw QObject::tr("No free move available!");
+}
+
+void PokePersonal::removeMove(int movenum)
+{
+    for (int i = 0; i < 4; i++) {
+        if (move(i) == movenum) {
+            setMove(0, i);
+        }
+    }
 }
 
 bool PokePersonal::hasMove(int moveNum)
@@ -296,7 +309,7 @@ void PokePersonal::setEV(int stat, quint8 val)
         val = 100;
     }
 
-    if (gen() == 2 && (stat == SpAttack || stat == SpDefense)) {
+    if (gen().num == 2 && (stat == SpAttack || stat == SpDefense)) {
         m_EVs[SpAttack] = val;
         m_EVs[SpDefense] = val;
     } else {
@@ -313,7 +326,7 @@ quint8 PokePersonal::DV(int stat) const
 
 void PokePersonal::setDV(int stat, quint8 val)
 {
-    if (gen() == 2 && (stat == SpAttack || stat == SpDefense)) {
+    if (gen().num == 2 && (stat == SpAttack || stat == SpDefense)) {
         m_DVs[SpAttack] = val;
         m_DVs[SpDefense] = val;
     } else {
@@ -322,7 +335,7 @@ void PokePersonal::setDV(int stat, quint8 val)
 
     if (gen() <= 2) {
         controlHPDV();
-        if (gen() == 2) {
+        if (gen().num == 2) {
             controlShininess();
             if (stat == Attack)
                 controlGender();
@@ -363,7 +376,7 @@ quint8 PokePersonal::EV(int stat) const
     return m_EVs[stat];
 }
 
-int PokePersonal::move(int moveSlot) const
+quint16 PokePersonal::move(int moveSlot) const
 {
     return m_moves[moveSlot];
 }
@@ -410,7 +423,7 @@ void PokeGraphics::setNum(Pokemon::uniqueId num)
     setUpToDate(false);
 }
 
-void PokeGraphics::setGen(int gen)
+void PokeGraphics::setGen(Pokemon::gen gen)
 {
     m_gen = gen;
     setUpToDate(false);
@@ -470,7 +483,7 @@ Pokemon::uniqueId PokeGraphics::num() const
     return m_num;
 }
 
-int PokeGraphics::gen() const
+Pokemon::gen PokeGraphics::gen() const
 {
     return m_gen;
 }
@@ -478,7 +491,7 @@ int PokeGraphics::gen() const
 PokeTeam::PokeTeam()
 {
     setNum(Pokemon::uniqueId(Pokemon::NoPoke));
-    setGen(GEN_MAX);
+    setGen(Pokemon::gen(GenInfo::GenMax(), GenInfo::NumberOfSubgens(GenInfo::GenMax())-1));
 }
 
 void PokeTeam::setNum(Pokemon::uniqueId num)
@@ -488,7 +501,7 @@ void PokeTeam::setNum(Pokemon::uniqueId num)
     PokeGraphics::setNum(num);
 }
 
-void PokeTeam::setGen(int gen)
+void PokeTeam::setGen(Pokemon::gen gen)
 {
     PokeGeneral::gen() = gen;
     PokePersonal::gen() = gen;
@@ -531,11 +544,14 @@ void PokeTeam::load()
         gender() = Pokemon::Male;
     } else
     {
-        gender() = true_rand() % 2 ? Pokemon::Male : Pokemon::Female;
+        /* Gen 2 has to do with IVs, so since we set max Att IV by default, it's male */
+        gender() = gen() <= 2 ? Pokemon::Male : (true_rand() % 2 ? Pokemon::Male : Pokemon::Female);
     }
 
-    ability() = abilities().ab(0);
-    nickname() = PokemonInfo::Name(num());
+    if (ability() == 0 || !abilities().contains(ability())) {
+        ability() = abilities().ab(0);
+    }
+
     PokeGraphics::load(gender(), false);
     PokeGraphics::loadIcon(num());
 }
@@ -564,11 +580,11 @@ int PokeTeam::stat(int statno) const
     return PokemonInfo::FullStat(num(), gen(), nature(), statno, level(),DV(statno),EV(statno));
 }
 
-Team::Team(): m_gen(GEN_MAX)
+Team::Team()
 {
 }
 
-void Team::setGen(int gen)
+void Team::setGen(Pokemon::gen gen)
 {
     if (this->gen() == gen)
         return;
@@ -578,62 +594,6 @@ void Team::setGen(int gen)
     for (int i = 0; i < 6; i++) {
         poke(i).setGen(gen);
     }
-}
-
-TrainerTeam::TrainerTeam()
-{
-    avatar() = 0;
-}
-
-const QString & TrainerTeam::trainerInfo() const
-{
-    return m_trainerInfo;
-}
-
-const QString & TrainerTeam::trainerLose() const
-{
-    return m_trainerLose;
-}
-
-const QString & TrainerTeam::trainerWin() const
-{
-    return m_trainerWin;
-}
-
-const QString & TrainerTeam::trainerNick() const
-{
-    return m_trainerNick;
-}
-
-
-void TrainerTeam::setTrainerInfo(const QString &newinfo)
-{
-    m_trainerInfo = newinfo;
-}
-
-void TrainerTeam::setTrainerWin(const QString &newwin)
-{
-    m_trainerWin = newwin;
-}
-
-void TrainerTeam::setTrainerLose(const QString &newlose)
-{
-    m_trainerLose = newlose;
-}
-
-void TrainerTeam::setTrainerNick(const QString &newnick)
-{
-    m_trainerNick = newnick;
-}
-
-const Team & TrainerTeam::team() const
-{
-    return m_team;
-}
-
-Team & TrainerTeam::team()
-{
-    return m_team;
 }
 
 QDomElement & PokeTeam::toXml(QDomElement &el) const
@@ -650,7 +610,8 @@ QDomElement & PokeTeam::toXml(QDomElement &el) const
     el.setAttribute("Happiness", happiness());
     el.setAttribute("Forme", num().subnum);
     el.setAttribute("Lvl", level());
-    el.setAttribute("Gen", gen());
+    el.setAttribute("Gen", gen().num);
+    el.setAttribute("SubGen", gen().subnum);
 
     for(int i = 0; i < 4; i++)
     {
@@ -680,30 +641,23 @@ QDomElement & PokeTeam::toXml(QDomElement &el) const
     return el;
 }
 
-void TrainerTeam::toXml(QDomDocument &document) const
+void Team::toXml(QDomDocument &document) const
 {
     QDomElement Team = document.createElement("Team");
-    Team.setAttribute("gen", team().gen());
+    Team.setAttribute("gen", gen().num);
+    Team.setAttribute("subgen", gen().subnum);
     Team.setAttribute("defaultTier", defaultTier());
     Team.setAttribute("version", 1);
     document.appendChild(Team);
-    QDomElement trainer = document.createElement("Trainer");
-    Team.appendChild(trainer);
-    QDomText trainerName = document.createTextNode(trainerNick());
-    trainer.appendChild(trainerName);
-    trainer.setAttribute("winMsg",trainerWin());
-    trainer.setAttribute("loseMsg",trainerLose());
-    trainer.setAttribute("infoMsg",trainerInfo());
-    trainer.setAttribute("avatar", avatar());
 
     for(int i = 0; i < 6; i++)
     {
         QDomElement pokemon = document.createElement("Pokemon");
-        Team.appendChild(team().poke(i).toXml(pokemon));
+        Team.appendChild(poke(i).toXml(pokemon));
     }
 }
 
-QString TrainerTeam::toXml() const
+QString Team::toXml() const
 {
     QDomDocument document;
 
@@ -712,8 +666,10 @@ QString TrainerTeam::toXml() const
     return document.toString();
 }
 
-bool TrainerTeam::saveToFile(const QString &path) const
+bool Team::saveToFile(const QString &path) const
 {
+    m_path = path;
+
     QFile file(path);
     if(!file.open(QIODevice::WriteOnly))
     {
@@ -730,10 +686,10 @@ bool TrainerTeam::saveToFile(const QString &path) const
     return true;
 }
 
-void saveTTeamDialog(const TrainerTeam &team, QObject *receiver, const char *slot)
+void saveTTeamDialog(const Team &team, QObject *receiver, const char *slot)
 {
     QSettings s;
-    QString defaultPath = s.value("team_location", "Team/trainer.tp").toString();
+    QString defaultPath = s.value("Teams/Folder").toString();
     QFileDialog *f = new QFileDialog(NULL, QObject::tr("Saving the Team"),defaultPath, QObject::tr("Team(*.tp)"));
     f->setWindowFlags(Qt::Window);
     f->setAttribute(Qt::WA_DeleteOnClose);
@@ -743,7 +699,7 @@ void saveTTeamDialog(const TrainerTeam &team, QObject *receiver, const char *slo
 #endif
     f->show();
 
-    TeamSaver *t = new TeamSaver(const_cast<TrainerTeam*>(&team));
+    TeamSaver *t = new TeamSaver(const_cast<Team*>(&team));
     t->setParent(f);
 
     QObject::connect(f, SIGNAL(fileSelected(QString)), t, SLOT(fileNameReceived(QString)));
@@ -751,10 +707,10 @@ void saveTTeamDialog(const TrainerTeam &team, QObject *receiver, const char *slo
         QObject::connect(f, SIGNAL(fileSelected(QString)), receiver, slot);
 }
 
-void loadTTeamDialog(TrainerTeam &team, QObject *receiver, const char *slot)
+void loadTTeamDialog(Team &team, QObject *receiver, const char *slot)
 {
     QSettings s;
-    QString defaultPath = s.value("team_location", "Team/trainer.tp").toString();
+    QString defaultPath = s.value("Teams/Folder").toString();
     QFileDialog *f = new QFileDialog(NULL, QObject::tr("Loading the Team"),defaultPath);
     f->setWindowFlags(Qt::Window);
     f->setAttribute(Qt::WA_DeleteOnClose);
@@ -773,7 +729,8 @@ void loadTTeamDialog(TrainerTeam &team, QObject *receiver, const char *slot)
 void PokeTeam::loadFromXml(const QDomElement &poke, int version)
 {
     if (poke.hasAttribute("Gen")) {
-        setGen(poke.attribute("Gen").toInt());
+        setGen(Pokemon::gen(poke.attribute("Gen", QString::number(GenInfo::GenMax())).toInt(),
+                            poke.attribute("SubGen", QString::number(GenInfo::NumberOfSubgens(poke.attribute("Gen", QString::number(GenInfo::GenMax())).toInt())-1)).toInt()));
     }
 
     reset();
@@ -782,7 +739,7 @@ void PokeTeam::loadFromXml(const QDomElement &poke, int version)
     int num = poke.attribute("Num").toInt();
     int forme = poke.attribute("Forme").toInt();
 
-    if (gen() == 4 && num > 493 && forme == 0 && !PokemonInfo::Exists(Pokemon::uniqueId(num, 0), 4)) {
+    if (gen().num == 4 && num > 493 && forme == 0 && !PokemonInfo::Exists(Pokemon::uniqueId(num, 0), 4)) {
         //Old way
         int indexes[] = {
             479,479,479,479,479,386,386,386,413,413,492,487
@@ -844,13 +801,15 @@ void PokeTeam::loadFromXml(const QDomElement &poke, int version)
     }
 }
 
-int PokeTeam::gen() const
+Pokemon::gen PokeTeam::gen() const
 {
     return PokePersonal::gen();
 }
 
-bool TrainerTeam::loadFromFile(const QString &path)
+bool Team::loadFromFile(const QString &path)
 {
+    m_path = path;
+
     QFile file(path);
     if (!file.open(QFile::ReadOnly))
     {
@@ -877,30 +836,18 @@ bool TrainerTeam::loadFromFile(const QString &path)
         return false;
     }
 
-    int gen = team.attribute("gen", "4").toInt();
-    if (gen < GEN_MIN || gen > GEN_MAX)
-        gen = GEN_MAX;
-    this->team().setGen(gen);
+    int gen = team.attribute("gen", QString::number(GenInfo::GenMax())).toInt();
+    if (gen < GEN_MIN || gen > GenInfo::GenMax())
+        gen = GenInfo::GenMax();
+    setGen(Pokemon::gen(team.attribute("gen", QString::number(GenInfo::GenMax())).toInt(),
+                        team.attribute("subgen", QString::number(GenInfo::NumberOfSubgens(team.attribute("gen", QString::number(GenInfo::GenMax())).toInt())-1)).toInt()));
     defaultTier() = team.attribute("defaultTier");
-
-    QDomElement trainer = team.firstChildElement("Trainer");
-    if(trainer.isNull())
-    {
-        QMessageBox::information(0,QObject::tr("Load Team"),QObject::tr("Error while loading the team."));
-        return false;
-    }
-
-    setTrainerNick(trainer.text());
-    setTrainerInfo(trainer.attribute("infoMsg"));
-    setTrainerLose(trainer.attribute("loseMsg"));
-    setTrainerWin(trainer.attribute("winMsg"));
-    avatar() = trainer.attribute("avatar", 0).toInt();
 
     QDomElement poke = team.firstChildElement("Pokemon");
     int cpt = 0;
     while(!poke.isNull())
     {
-        this->team().poke(cpt).loadFromXml(poke, version);
+        this->poke(cpt).loadFromXml(poke, version);
 
         cpt++;
         poke = poke.nextSiblingElement("Pokemon");
@@ -909,7 +856,7 @@ bool TrainerTeam::loadFromFile(const QString &path)
 }
 
 /******** Really ugly *********/
-bool TrainerTeam::importFromTxt(const QString &file1)
+bool Team::importFromTxt(const QString &file1)
 {
     QString file = file1;
     file.replace("---", "");
@@ -925,7 +872,7 @@ bool TrainerTeam::importFromTxt(const QString &file1)
         }
 
         QStringList first = pokeDetail[0].split('@');
-        PokeTeam &p = team().poke(i);
+        PokeTeam &p = this->poke(i);
         p.reset();
 
         Pokemon::uniqueId pokenum;
@@ -1115,14 +1062,14 @@ bool TrainerTeam::importFromTxt(const QString &file1)
 }
 
 /******** Less ugly *********/
-QString TrainerTeam::exportToTxt() const
+QString Team::exportToTxt() const
 {
     QString ret = "";
     for (int i = 0; i < 6; i++) {
-        if (team().poke(i).num() == Pokemon::NoPoke)
+        if (this->poke(i).num() == Pokemon::NoPoke)
             continue;
 
-        const PokeTeam &p = team().poke(i);
+        const PokeTeam &p = this->poke(i);
 
         ret += p.nickname();
 
@@ -1172,7 +1119,7 @@ QString TrainerTeam::exportToTxt() const
             if (p.move(i) != 0) {
                 ret += "- " + MoveInfo::Name(p.move(i)) ;
                 if (p.move(i) == Move::HiddenPower) {
-                    ret += " [" + TypeInfo::Name(HiddenPowerInfo::Type(p.gen(), p.DV(0), p.DV(1), p.DV(2), p.DV(3), p.DV(4), p.DV(5))) + "]";
+                    ret += " [" + TypeInfo::Name(HiddenPowerInfo::Type(p.gen().num, p.DV(0), p.DV(1), p.DV(2), p.DV(3), p.DV(4), p.DV(5))) + "]";
                 }
                 ret += "\n";
             }
@@ -1183,242 +1130,184 @@ QString TrainerTeam::exportToTxt() const
     return ret.trimmed();
 }
 
-
-QDataStream & operator << (QDataStream & out, const Team & team)
+QString Team::name() const
 {
-    out << quint8(team.gen());
+    QFileInfo info(path());
 
-    for(int index = 0;index<6;index++)
-    {
-        const PokeTeam & poke = team.poke(index);
-        out << poke;
+    return QUrl::fromPercentEncoding(info.baseName().toUtf8());
+}
+
+void Team::setName(const QString &name)
+{
+    m_path = folder() + "/" + QUrl::toPercentEncoding(name) + ".tp";
+}
+
+void Team::setFolder(const QString &folder)
+{
+    m_path = folder + "/" + QUrl::toPercentEncoding(name()) + ".tp";
+}
+
+QString Team::folder() const
+{
+    QFileInfo info(path());
+
+    return info.absolutePath();
+}
+
+DataStream & operator << (DataStream & out, const Team & team)
+{
+    VersionControl v;
+    Flags network(!team.defaultTier().isEmpty());
+
+    v.stream << network;
+
+    if (team.defaultTier().length() > 0) {
+        v.stream << team.defaultTier();
     }
+
+    v.stream << team.gen();
+
+    for (int i = 0; i < 6; i++) {
+        v.stream << team.poke(i);
+    }
+
+    out << v;
 
     return out;
 }
 
 
-QDataStream &operator << (QDataStream &out, const TrainerTeam& trainerTeam)
+DataStream & operator << (DataStream & out, const PokePersonal & p)
 {
-    out << trainerTeam.trainerNick();
-    out << trainerTeam.trainerInfo();
-    out << trainerTeam.trainerLose();
-    out << trainerTeam.trainerWin();
-    out << trainerTeam.avatar();
-    out << trainerTeam.defaultTier();
-    out << trainerTeam.team();
+    VersionControl v;
+    Flags network;
 
-    return out;
-}
+    typedef PokePersonal pp;
 
+    network.setFlag(pp::hasNickname, !p.nickname().isEmpty());
+    network.setFlag(pp::hasHappiness, p.happiness() != 0);
 
-QDataStream &operator >> (QDataStream &in, TrainerTeam& trainerTeam)
-{
-    QString nick, info, lose, win;
-
-    in >> nick;
-    in >> info;
-    in >> lose;
-    in >> win;
-    in >> trainerTeam.avatar();
-    in >> trainerTeam.defaultTier();
-    in >> trainerTeam.team();
-
-
-    trainerTeam.setTrainerNick(nick);
-    trainerTeam.setTrainerInfo(info);
-    trainerTeam.setTrainerWin(win);
-    trainerTeam.setTrainerLose(lose);
-
-    return in;
-}
-
-QDataStream & operator >> (QDataStream & in, Team & team)
-{
-    quint8 gen;
-
-    in >> gen;
-
-    team.setGen(gen);
-
-    for(int i=0;i<6;i++)
-    {
-        in >> team.poke(i);
+    for (int i = Hp; i <= Speed; i++) {
+        if (p.DV(i) != 31) {
+            network.setFlag(pp::hasIVs, true);
+            break;
+        }
     }
 
-    return in;
-}
+    v.stream << network;
+    v.stream << p.num();
+    v.stream << p.level();
 
+    Flags data;
+    data.setFlag(pp::isShiny, p.shiny());
 
-QDataStream & operator >> (QDataStream & in, PokeTeam & poke)
-{
-    Pokemon::uniqueId num;
-    in >> num;
+    v.stream << data;
 
-    poke.setNum(num);
-
-    poke.load();
-
-    in >> poke.nickname() >> poke.item() >> poke.ability() >> poke.nature() >> poke.gender() >> poke.shiny() >> poke.happiness() >> poke.level();
-
-    for(int i=0;i<4;i++)
-    {
-        int moveNum;
-        in >> moveNum;
-        poke.setMove(moveNum,i);
+    if (p.nickname().length() > 0) {
+        v.stream << p.nickname();
     }
-    for(int i=0;i<6;i++)
-    {
-        quint8 DV;
-        in >> DV;
-        poke.setDV(i,DV);
-    }
-    for(int i=0;i<6;i++)
-    {
-        quint8 EV;
-        in >> EV;
-        poke.setEV(i,EV);
-    }
-    return in;
-}
 
+    if (p.gen() > 1) {
+        v.stream << p.item();
+        if (p.gen() > 2) {
+            v.stream << p.ability();
+            v.stream << p.nature();
+        }
+        v.stream << p.gender();
+        if (p.gen() > 2 && p.happiness() != 0) {
+            v.stream << p.happiness();
+        }
+    }
 
-QDataStream & operator << (QDataStream & out, const PokePersonal & Pokemon)
-{
-    out << Pokemon.num();
-    out << Pokemon.nickname();
-    out << Pokemon.item();
-    out << Pokemon.ability();
-    out << Pokemon.nature();
-    out << Pokemon.gender();
-    out << Pokemon.shiny();
-    out << Pokemon.happiness();
-    out << Pokemon.level();
     int i;
     for(i=0;i<4;i++)
     {
-        out << Pokemon.move(i);
+        v.stream << p.move(i);
     }
     for(i=0;i<6;i++)
     {
-        out << Pokemon.DV(i);
+        v.stream << p.EV(i);
     }
-    for(i=0;i<6;i++)
-    {
-        out << Pokemon.EV(i);
+
+    if (network[pp::hasIVs]) {
+        for(i=0;i<6;i++)
+        {
+            v.stream << p.DV(i);
+        }
     }
+
+    out << v;
+
     return out;
 }
 
-QDataStream & operator >> (QDataStream & in, PokePersonal & poke)
+DataStream & operator >> (DataStream & in, PokePersonal & p)
 {
-    in >> poke.num() >> poke.nickname() >> poke.item() >> poke.ability() >> poke.nature() >> poke.gender() >> poke.shiny() >> poke.happiness() >> poke.level();
+    typedef PokePersonal pp;
 
-    for(int i=0;i<4;i++)
-    {
-        int moveNum;
-        in >> moveNum;
-        poke.setMove(moveNum,i);
+    VersionControl v;
+    in >> v;
+
+    if (v.versionNumber != 0) {
+        return in;
     }
-    for(int i=0;i<6;i++)
-    {
-        quint8 DV;
-        in >> DV;
-        poke.setDV(i,DV);
+
+    Flags network, data;
+
+    v.stream >> network;
+    if (network[pp::hasGen]) {
+        v.stream >> p.gen();
     }
+    v.stream >> p.num() >> p.level() >> data;
+
+    p.shiny() = data[pp::isShiny];
+
+    if (network[pp::hasNickname]) {
+        v.stream >> p.nickname();
+    }
+
+    if (network[pp::hasPokeball]) {
+        quint16 ball;
+        v.stream >> ball;
+    }
+
+    if (p.gen() > 1) {
+        v.stream >> p.item();
+        if (p.gen() > 2) {
+            v.stream >> p.ability();
+            v.stream >> p.nature();
+        }
+        v.stream >> p.gender();
+        if (p.gen() > 2 && network[pp::hasHappiness]) {
+            v.stream >> p.happiness();
+        }
+    }
+
+    for (int i = 0; i < 4; i++) {
+        if (network[pp::hasPPups]) {
+            quint8 ppup;
+            v.stream >> ppup;
+        }
+        quint16 moveNum;
+        v.stream >> moveNum;
+        p.setMove(moveNum,i);
+    }
+
     for(int i=0;i<6;i++)
     {
         quint8 EV;
-        in >> EV;
-        poke.setEV(i,EV);
-    }
-    return in;
-}
-
-QString Pokemon::uniqueId::toString() const
-{
-    QString result = QString("%1").arg(pokenum);
-    if(subnum) result.append(QString("-%1").arg(subnum));
-    return result;
-}
-
-QString Pokemon::uniqueId::toLine(const QString &data) const
-{
-    return QString ("%1:%2 %3").arg(pokenum).arg(subnum).arg(data);
-}
-
-quint32 Pokemon::uniqueId::toPokeRef() const
-{
-    return pokenum + (subnum << 16);
-}
-
-/* Extracts the pokenum part and data from a line of text. The pokenum part will be put in the "id" field, the
-   content of the line (without the index) in the "lineData" field. If options are given in the index, they'll
-   be put in the "options" field. */
-bool Pokemon::uniqueId::extract(const QString &from, Pokemon::uniqueId &id, QString &lineData, QString *options)
-{
-    if (from.isEmpty() || from.indexOf(' ') == -1)
-        return false;
-
-   // ":" delimeter for values. pokenum:subnum:1-letter-options
-    QStringList values = from.section(' ', 0, 0).split(':');
-
-    if (values.size() < 2)
-        return false;
-
-    bool ok, ok2;
-    uint num = values[0].toUInt(&ok);
-    uint sub = values[1].toUInt(&ok2);
-
-    if (!ok || !ok2)
-        return false;
-
-    lineData = from.section(' ', 1);
-    id.pokenum = num;
-    id.subnum = sub;
-
-    // optional: options
-    if (options) {
-        options->clear();
-        if(values.size() > 2)
-            *options = values[2];
+        v.stream >> EV;
+        p.setEV(i,EV);
     }
 
-    return true;
-}
+    if (network[pp::hasIVs]) {
+        for(int i=0;i<6;i++)
+        {
+            quint8 IV;
+            v.stream >> IV;
+            p.setDV(i,IV);
+        }
+    }
 
-bool Pokemon::uniqueId::extract_short(const QString &from, quint16 &pokenum, QString &remaining)
-{
-    bool result = false;
-    if(!from.isEmpty()) {
-        int space_pos = from.indexOf(' '); // 1 space delimeter (first)
-        if(space_pos != -1) {
-            QString other_data = from.mid(space_pos + 1);
-            if(!other_data.isEmpty()){
-                QString text_pokenum = from.left(space_pos);
-                bool ok;
-                quint16 read_pokenum = text_pokenum.toUInt(&ok);
-                if(ok) {
-                    pokenum = read_pokenum;
-                    remaining = other_data;
-                    result = true;
-                }
-            } // if !poke_name
-        } // if space_pos
-    } // if !from
-    return result;
-}
-
-QDataStream & operator << (QDataStream &out, const Pokemon::uniqueId &id)
-{
-    out << id.pokenum;
-    out << id.subnum;
-    return out;
-}
-
-QDataStream & operator >> (QDataStream &in, Pokemon::uniqueId &id)
-{
-    in >> id.pokenum;
-    in >> id.subnum;
     return in;
 }

@@ -1,8 +1,9 @@
 #include "qrcodeplugin.h"
 #include "../Teambuilder/engineinterface.h"
+#include "../Teambuilder/Teambuilder/teamholderinterface.h"
 #include "../PokemonInfo/pokemonstructs.h"
 #include "../Utilities/otherwidgets.h"
-#ifdef WIN32
+#ifdef _WIN32
 #include "../../SpecialIncludes/zlib.h"
 #include "../../SpecialIncludes/qrencode.h"
 #else
@@ -34,8 +35,8 @@ QString QRCodePlugin::pluginName() const
 
 QWidget *QRCodePlugin::getConfigurationWidget()
 {
-    TrainerTeam *team = interface->trainerTeam();
-    QByteArray xml = team->toXml().toUtf8();
+    TeamHolderInterface *team = interface->trainerTeam();
+    QByteArray xml = team->team().toXml().toUtf8();
 
     /* Creates zipped data */
     z_stream stream;

@@ -25,8 +25,8 @@ TierRank::TierRank(QString tier) : tier(tier), m(QMutex::Recursive)
     QByteArray content = f.readAll();
 
     if (content.length() > 0) {
-        QDataStream d(&content, QIODevice::ReadOnly);
-        d.setVersion(QDataStream::Qt_4_7);
+        DataStream d(&content, QIODevice::ReadOnly);
+
         d >> uses;
 
         for (int i = 0; i < uses.length(); i++) {
@@ -76,8 +76,7 @@ void TierRank::writeContents()
     QFile f("usage_stats/raw/"+tier+"/ranks.rnk");
     f.open(QIODevice::WriteOnly);
     QByteArray data;
-    QDataStream d(&data, QIODevice::WriteOnly);
-    d.setVersion(QDataStream::Qt_4_7);
+    DataStream d(&data, QIODevice::WriteOnly);
     d << uses;
 
     f.write(data);
@@ -135,9 +134,9 @@ PokemonOnlineStatsBattlePlugin::PokemonOnlineStatsBattlePlugin(PokemonOnlineStat
 
 PokemonOnlineStatsBattlePlugin::~PokemonOnlineStatsBattlePlugin()
 {
-    qDebug() << "Deleting stats plugin " << this;
+    //qDebug() << "Deleting stats plugin " << this;
     master->refCounter.deref();
-    qDebug() << "Deleted stats plugin " << this;
+    //qDebug() << "Deleted stats plugin " << this;
 }
 
 QHash<QString, BattlePlugin::Hook> PokemonOnlineStatsBattlePlugin::getHooks()
@@ -162,7 +161,7 @@ int PokemonOnlineStatsBattlePlugin::battleStarting(BattleInterface &b)
     QString tier = b.tier();
 
     if (tier.length() == 0) {
-        tier = QString("Mixed Tiers Gen %1").arg(b.gen());
+        tier = QString("Mixed Tiers Gen %1").arg(b.gen().num);
     }
 
 
@@ -250,6 +249,22 @@ void PokemonOnlineStatsBattlePlugin::savePokemon(const PokeBattle &p, bool lead,
 
     if (!raw_f) {
         raw_f = fopen(file.data(), "w+b");
+    }
+
+    if (!raw_f) {
+        QDir dir;
+        dir.mkpath(d);
+
+        raw_f = fopen(file.data(), "r+b");
+
+        if (!raw_f) {
+            raw_f = fopen(file.data(), "w+b");
+
+            if (!raw_f) {
+                qDebug() << "Usage stats error: impossible to open file " << file.data();
+                return;
+            }
+        }
     }
 
     char buffer[bufsize];

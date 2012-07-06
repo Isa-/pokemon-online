@@ -1,4 +1,4 @@
-#ifndef CLIENT_H
+﻿#ifndef CLIENT_H
 #define CLIENT_H
 
 #include <QtGui>
@@ -9,66 +9,90 @@
 #include "../Utilities/otherwidgets.h"
 #include "tierstruct.h"
 #include "password_wallet.h"
-#include <ctime>
+#include "Teambuilder/teamholder.h"
+#include "clientinterface.h"
+#include "plugininterface.h"
 
 class MainEngine;
-class BaseChallengeWindow;
+class ChallengeDialog;
 class QIdTreeWidgetItem;
 class BattleWindow;
 class BaseBattleWindowInterface;
 class QScrollDownTextBrowser;
-class PMWindow;
+class PMSystem;
+class PMStruct;
 class ControlPanel;
 class RankingDialog;
-class BattleFinder;
+class FindBattleDialog;
 class FindBattleData;
 class Channel;
 class QExposedTabWidget;
 class SmallPokeTextEdit;
+class DataStream;
+class PluginManager;
 
 /* The class for going online.
 
     It displays the mainchat, the players list, ... and also have the dialog engine in it*/
 
-class Client : public QWidget, public CentralWidgetInterface
+class Client : public QWidget, public ClientInterface, public CentralWidgetInterface
 {
     Q_OBJECT
 
     friend class Channel;
 public:
-    Client(TrainerTeam *, const QString &url, const quint16 port);
+    Client(PluginManager*, TeamHolder *, const QString &url, const quint16 port);
     ~Client();
 
-    TrainerTeam *team();
+    TeamHolder *team();
     QMenuBar *createMenuBar(MainEngine *w);
+
+    void addPlugin(OnlineClientPlugin *o);
+    void removePlugin(OnlineClientPlugin *o);
+    void registerMetaTypes(QScriptEngine *);
 
     /* Prints a line to all the channels which have that player */
     void printLine(int playerid, const QString &line);
     void printLine(int event, int playerid, const QString &line);
-    void cancelFindBattle(bool verbose=true);
-    bool playerExist(int id) const;
-    QString name(int id) const;
-    QString ownName() const;
-    bool battling() const;
-    bool busy() const;
-    bool hasChannel(int channelid) const;
-    bool away() const;
-    int id(const QString &name) const;
-    int currentChannel() const;
+
+    Q_INVOKABLE void cancelFindBattle(bool verbose=true);
+    Q_INVOKABLE bool playerExist(int id) const;
+    Q_INVOKABLE QString name(int id) const;
+    Q_INVOKABLE QString ownName() const;
+    Q_INVOKABLE bool battling() const;
+    Q_INVOKABLE bool busy() const;
+    Q_INVOKABLE bool hasChannel(int channelid) const;
+    Q_INVOKABLE bool away() const;
+    Q_INVOKABLE int id(const QString &name) const;
+    Q_INVOKABLE int currentChannel() const;
     Channel *channel(int channelid);
-    int ownId() const ;
-    int ownAuth() const ;
-    int auth(int id) const ;
-    bool isIgnored(int id) const;
-    QString authedNick(int id) const;
-    QColor color(int id) const;
-    QString tier(int player) const;
+    Q_INVOKABLE int ownId() const;
+    Q_INVOKABLE int ownAuth() const;
+
+    Q_INVOKABLE int auth(int id) const;
+    Q_INVOKABLE bool isIgnored(int id) const;
+
+    Q_INVOKABLE QString authedNick(int id) const;
+    Q_INVOKABLE QColor color(int id) const;
+
+    Q_INVOKABLE QString tier(int player) const;
+    Q_INVOKABLE QStringList tiers(int player) const;
+
     void changeName(int player, const QString &name);
     /* Resets fade away counter */
     void refreshPlayer(int id);
-    QSize defaultSize() {
+
+    bool hasPlayer(int id);
+    bool hasPlayerInfo(int id);
+
+    QSize defaultSize() const {
         return QSize(800,600);
     }
+    Q_INVOKABLE void reconnect();
+
+    Q_INVOKABLE QString defaultChannel();
+
+    Q_INVOKABLE QString announcement();
 
     enum Status {
         Available = 0,
@@ -82,16 +106,15 @@ public:
     void seeChallenge(const ChallengeInfo &c);
 
     PlayerInfo player(int id) const;
-    BasicInfo info(int id) const;
-
     void removePlayer(int id);
+
     void removeBattleWindow(int id);
     void disableBattleWindow(int id);
 
     QList<QIcon> statusIcons;
     QIcon chatot, greychatot;
 
-    QStringList getTierList() const {
+    Q_INVOKABLE QStringList getTierList() const {
         return tierList;
     }
 
@@ -105,44 +128,49 @@ public:
         TeamEvent = 8,
         AnyEvent = 15
     };
+
     int showPEvents;
     bool sortBT;
     bool sortBA;
     bool sortCBN;
     bool showTS;
     bool pmFlashing;
-    bool pmDisabled;
+    bool pmsTabbed;
+    bool pmReject;
+
     TierNode tierRoot;
     QStringList tierList;
 public slots:
     void errorFromNetwork(int errnum, const QString &error);
+
     void connected();
     void disconnected();
+
     /* message received from the server */
     void printLine(const QString &line);
     void printHtml(const QString &html);
+    void printChannelMessage(const QString &mess, int channel, bool html);
+
     /* sends what's in the line edit */
     void sendText();
-    void playerLogin(const PlayerInfo &p);
+    void playerLogin(const PlayerInfo &p, const QStringList &tiers);
     void playerReceived(const PlayerInfo &p);
-    void teamChanged(const PlayerInfo &p);
     void announcementReceived(const QString &);
+    void tiersReceived(const QStringList &tiers);
     void playerLogout(int);
     void sendRegister();
-    /* sends the server a challenge notice */
-    void sendChallenge(int id);
+    void setReconnectPass(const QByteArray&);
+    void cleanData();
+    void onReconnectFailure(int reason);
     /* removes the pointer to the challenge window when it is destroyed */
     void clearChallenge();
-    /* sends the server a "Accept Challenge" notice */
-    void acceptChallenge(int id);
-    void refuseChallenge(int id);
     /* Display the info for that player */
-    void seeInfo(int id);
+    void seeInfo(int id, QString tier="");
     void seeInfo(QTreeWidgetItem *it);
     /* Challenge info by the server */
     void challengeStuff(const ChallengeInfo &c);
     /* Channels list */
-    void channelCommandReceived(int command, int channel, QDataStream *stream);
+    void channelCommandReceived(int command, int channel, DataStream *stream);
     void channelsListReceived(const QHash<qint32, QString> &channels);
     void sortChannels();
     void sortChannelsToggle(bool enabled);
@@ -161,7 +189,7 @@ public slots:
     void pingActivated(Channel *c);
     void showChannelsContextMenu(const QPoint & point);
     /* battle... */
-    void battleStarted(int battleid, int id, const TeamBattle &team, const BattleConfiguration &conf);
+    void battleStarted(int battleid, int id, int id2, const TeamBattle &team, const BattleConfiguration &conf);
     void battleStarted(int battleid, int id1, int id2);
     void battleReceived(int battleid, int id1, int id2);
     void battleFinished(int battleid, int res, int winner, int loser);
@@ -179,12 +207,13 @@ public slots:
     void battleListActivated(QTreeWidgetItem* it);
     void loadTeam();
     /* A popup that asks for the pass */
-    void askForPass(const QString &salt);
+    void askForPass(const QByteArray &salt);
     /* A popup that asks for a server pass */
-    void serverPass(const QString &salt);
-    /* When someone is kicked */
+    void serverPass(const QByteArray &salt);
+    /* When someone is kicked, banned or temp banned */
     void playerKicked(int,int);
     void playerBanned(int,int);
+    void playerTempBanned(int dest, int src, int time);
     /* When you kick someone */
     void kick(int);
     void ban(int);
@@ -192,7 +221,8 @@ public slots:
     void pmcp(QString);
     /* PM */
     void startPM(int);
-    void removePM(int, const QString);
+    void closePM(int);
+    void removePM(int id, const QString);
     void PMReceived(int, const QString);
     /* CP */
     void controlPanel(int);
@@ -210,9 +240,8 @@ public slots:
     void changeButtonStyle(bool old);
     void changeBattleWindow(bool old);
     void changeNicknames(bool old);
-    void showTeam(bool);
     void enableLadder(bool);
-    void sortPlayersCountingTiers(bool);
+    void sortPlayersByTiers(bool);
     void sortPlayersByAuth(bool);
     void setChannelSelected(int);
     void enablePlayerEvents();
@@ -224,14 +253,17 @@ public slots:
     void showBattleEvents(bool);
     void showChannelEvents(bool);
     void showTeamEvents(bool);
-    void toggleAutoJoin(bool);
+    void toggleAutoJoin(bool autojoin);
+    void toggleDefaultChannel(bool def);
     void showTimeStamps(bool);
     void showTimeStamps2(bool);
     void pmFlash(bool);
-    void togglePM(bool);
+    void toggleIncomingPM(bool);
+    void togglePMTabs(bool);
+    void togglePMLogs(bool);
     void movePlayerList(bool);
     void ignoreServerVersion(bool);
-    void versionDiff(const QString &a, const QString &b);
+    void versionDiff(const ProtocolVersion &v, int level);
     void serverNameReceived(const QString &sName);
     void tierListReceived(const QByteArray &array);
     void changeTier();
@@ -243,6 +275,7 @@ public slots:
     void ignore(int, bool);
     /* Teambuilder slots */
     void openTeamBuilder();
+    void reloadTeamBuilderBar();
     void changeTeam();
     /* Automatic removal of players in memory */
     void fadeAway();
@@ -252,7 +285,11 @@ signals:
     void done();
     void userInfoReceived(const UserInfo &ui);
     void tierListFormed(const QStringList &tiers);
-    void PMDisabled(bool b, int starterAuth);
+    void PMDisabled(bool value, int starterAuth);
+    void togglePMs(bool value);
+    void PMDisconnected(bool disconnected);
+    void titleChanged();
+
 protected:
     void paintEvent(QPaintEvent *)
     {
@@ -263,19 +300,20 @@ protected:
     }
 
 private:
-    TrainerTeam *myteam;
+    TeamHolder *myteam;
+    MainEngine *top;
     QString mynick;
 
     /* GUI */
     /* Main chat */
     QScrollDownTextBrowser *mychat;
     /* PMs and disabled PMs */
-    QHash<int, PMWindow*> mypms;
-    QHash<QString, PMWindow*> disabledpms;
+    QHash<int, PMStruct*> mypms;
+    QHash<QString, PMStruct*> disabledpms;
     /* Line the user types in */
 //    QLineEdit *myline;
     QIRCLineEdit *myline;
-    SmallPokeTextEdit *announcement;
+    SmallPokeTextEdit *server_announcement;
     /* Where players are displayed */
     QStackedWidget *playersW, *battlesW;
     QExposedTabWidget *mainChat;
@@ -289,21 +327,22 @@ private:
     QPushButton *myregister;
     /* Button to find a battle */
     QPushButton *findMatch;
+    /* PM System */
+    PMSystem *pmSystem;
 
     /*Channels */
     QHash<qint32, QString> channelNames;
     QHash<QString, qint32> channelByNames;
     QHash<qint32, Channel *> mychannels;
-    QStringList autojoinChannels;
     /* Ignore */
     QList<int> myIgnored;
 
     /* Challenge windows , to emit or to receive*/
-    QSet<BaseChallengeWindow *> mychallenges;
-    QPointer<BattleFinder> myBattleFinder;
+    QSet<ChallengeDialog *> mychallenges;
+    QPointer<FindBattleDialog> myBattleFinder;
     QHash<int, BaseBattleWindowInterface* > mySpectatingBattles;
     QHash<int, BattleWindow* > mybattles;
-    QAction *goaway;
+    QAction *goaway, *ladder;
 
     bool findingBattle;
     bool isConnected;
@@ -311,8 +350,9 @@ private:
     quint16 port;
     int _mid;
     int selectedChannel;
+    QByteArray reconnectPass;
 
-    QString serverVersion;
+    ProtocolVersion serverVersion;
     QString serverName;
 
     QPointer<QMenuBar> mymenubar;
@@ -334,12 +374,16 @@ private:
        log out for real */
     QSet<int> pmedPlayers;
     QHash<QString, int> mynames;
+    QHash<QString, int> mylowernames;
 
     QHash<qint32, Battle> battles;
 
     /* Network Relay */
-    Analyzer myrelay;
-    Analyzer & relay();
+    Analyzer *myrelay;
+    Analyzer &relay();
+public:
+    Q_INVOKABLE Analyzer *network() {return myrelay;}
+private:
 
     /* Password Wallet */
     PasswordWallet wallet;
@@ -347,31 +391,65 @@ private:
     PlayerInfo & playerInfo(int id);
     void updateState(int player);
     /* Returns the challenge window displaying that player or NULL otherwise */
-    BaseChallengeWindow * getChallengeWindow(int player);
-    void closeChallengeWindow(BaseChallengeWindow *c);
+    ChallengeDialog * getChallengeWindow(int player);
+    void closeChallengeWindow(ChallengeDialog *c);
 
     void initRelay();
-    void changeTierChecked(const QString &newtier);
+    void changeTiersChecked();
+    void rebuildTierMenu();
 
     bool eventEnabled(int event);
-    time_t lastAutoPM;
-};
 
-class BattleFinder : public QWidget
-{
-    Q_OBJECT
-public:
-    BattleFinder(QWidget *parent = NULL);
-public slots:
-    void throwChallenge();
-    void changeEnabled();
-signals:
-    void findBattle(const FindBattleData&);
-private:
-    QCheckBox *sameTier, *rated, *rangeOn;
-    QComboBox *mode;
-    QCheckBox *clauses[ChallengeInfo::numberOfClauses];
-    QLineEdit *range;
+    TeamHolder secondTeam;
+    bool waitingOnSecond;
+
+    /* The mode of the tier list. If it's single, then a simple checkbox, otherwise another menu for each team for each tier */
+    bool singleTeam;
+
+    QSettings globals;
+
+    QSet<OnlineClientPlugin*> plugins;
+    PluginManager *pluginManager;
+    QHash<OnlineClientPlugin*, QHash<QString, OnlineClientPlugin::Hook> > hooks;
+
+    template<class T1>
+    bool call(const QString &f, T1 arg1)
+    {
+        bool ret = true;
+        foreach(OnlineClientPlugin *p, plugins) {
+            if (hooks[p].contains(f)) {
+                ret &= (*p.*(reinterpret_cast<int (OnlineClientPlugin::*)(T1)>(hooks[p][f])))(arg1);
+            }
+        }
+
+        return ret;
+    }
+
+    template<class T1, class T2>
+    bool call(const QString &f, T1 arg1, T2 arg2)
+    {
+        bool ret = true;
+        foreach(OnlineClientPlugin *p, plugins) {
+            if (hooks[p].contains(f)) {
+                ret &= (*p.*(reinterpret_cast<int (OnlineClientPlugin::*)(T1, T2)>(hooks[p][f])))(arg1, arg2);
+            }
+        }
+
+        return ret;
+    }
+
+    template<class T1, class T2, class T3>
+    bool call(const QString &f, T1 arg1, T2 arg2, T3 arg3)
+    {
+        bool ret = true;
+        foreach(OnlineClientPlugin *p, plugins) {
+            if (hooks[p].contains(f)) {
+                ret &= (*p.*(reinterpret_cast<int (OnlineClientPlugin::*)(T1, T2, T3)>(hooks[p][f])))(arg1, arg2, arg3);
+            }
+        }
+
+        return ret;
+    }
 };
 
 #endif // CLIENT_H

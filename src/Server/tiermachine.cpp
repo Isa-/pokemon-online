@@ -1,6 +1,7 @@
 #include "tiermachine.h"
 #include "tier.h"
 #include "loadinsertthread.h"
+#include "../PokemonInfo/battlestructs.h"
 
 TierMachine* TierMachine::inst;
 
@@ -54,11 +55,11 @@ void TierMachine::loadDecaySettings()
 {
     QSettings s("config", QSettings::IniFormat);
 
-    alt_expiration = std::max(s.value("ladder_months_expiration", 3).toInt(), 1);
-    hours_per_period = std::max(s.value("ladder_period_duration", 24).toInt(), 1);
-    percent_per_period = std::max(s.value("ladder_percent_per_period", 5).toInt(), 1);
-    max_saved_periods = std::max(s.value("ladder_bonus_time", 3).toInt(), 1);
-    max_percent_decay = std::min(s.value("ladder_max_decay", 50).toInt(), 100);
+    alt_expiration = std::max(s.value("Ladder/MonthsExpiration", 3).toInt(), 1);
+    hours_per_period = std::max(s.value("Ladder/PeriodDuration", 24).toInt(), 1);
+    percent_per_period = std::max(s.value("Ladder/DecayPerPeriod", 5).toInt(), 1);
+    max_saved_periods = std::max(s.value("Ladder/BonusPeriods", 3).toInt(), 1);
+    max_percent_decay = std::min(s.value("Ladder/MaxDecay", 50).toInt(), 100);
 }
 
 void TierMachine::load()
@@ -300,6 +301,10 @@ QPair<int, int> TierMachine::pointChangeEstimate(const QString &player, const QS
 
 QString TierMachine::findTier(const TeamBattle &t) const
 {
+    if (exists(t.tier) && tier(t.tier).isValid(t)) {
+        return t.tier;
+    }
+
     for (int i = m_tiers.size()-1; i >= 0; i--) {
         if (m_tiers[i]->isValid(t)) {
             return m_tierNames[i];

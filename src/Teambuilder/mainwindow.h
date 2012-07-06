@@ -1,16 +1,13 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QtGui>
+#include <QMainWindow>
 #include "engineinterface.h"
-#include "../PokemonInfo/pokemoninfo.h"
 #include "centralwidget.h"
+#include "Teambuilder/teamholder.h"
 
-class TB_Menu;
-class TeamBuilder;
-class Client;
-class ServerChoice;
 class PluginManager;
+class MainWidget;
 
 /* The main window!
 
@@ -23,17 +20,18 @@ public:
     MainEngine();
     ~MainEngine();
 
-    void loadTeam(const QString &path);
+    int numberOfTabs() const;
 
-    void addStyleMenu(QMenuBar *m);
     void addThemeMenu(QMenuBar *m);
+    void addStyleMenu(QMenuBar *m);
     void changeTheme(const QString &theme);
 public slots:
-    void launchMenu();
+    void launchMenu(bool first = false);
     void launchCredits();
     void launchTeamBuilder();
+    void reloadPokemonDatabase();
     void goOnline(const QString &url, const quint16 port, const QString &name);
-    void launchServerChoice();
+    void launchServerChoice(bool newTab = false);
     void changeLanguage();
     void updateMenuBar();
     void openPluginManager();
@@ -42,12 +40,14 @@ public slots:
     /* slots called by subwindows when they need it */
     void loadTeamDialog();
     void loadReplayDialog();
+    void openNewTab();
     void loadStyleSheet();
+    void changeStyle();
     void showReplay(QString);
+    void closeTab();
 private slots:
     /* Relies on ((QAction*)(sender()))->text() */
     void openPluginConfiguration();
-    void changeStyle();
     void changeTheme();
 
     void changeUserThemeFolder();
@@ -59,12 +59,23 @@ private:
 
     QMenuBar* transformMenuBar(QMenuBar *param);
     QMenu* themeMenu;
+    MainWidget *main;
 
-    TrainerTeam m_team;
+    QHash<int, TeamHolder *> m_teams;
+
+    int freespot;
+
+    void routine(CentralWidgetInterface *w);
+
+    TeamHolder *trainerTeam(int spot);
+    int currentSpot() const;
+    void addTeam(int spot);
+
+    QVector <TeamHolder*> trash;
+
+    void clearTrash();
 public:
-    TrainerTeam *trainerTeam() {
-        return &m_team;
-    }
+    TeamHolder *trainerTeam();
     ThemeAccessor *theme();
 };
 

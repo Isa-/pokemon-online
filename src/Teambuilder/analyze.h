@@ -1,11 +1,15 @@
+/**
+ * See network protocol here: http://wiki.pokemon-online.eu/view/Network_Protocol_v2
+*/
+
 #ifndef ANALYZE_H
 #define ANALYZE_H
 
 #include <QtCore>
 #include "network.h"
+#include "../Utilities/coreclasses.h"
 
 class Client;
-class FullInfo;
 class PlayerInfo;
 class BattleChoice;
 class TeamBattle;
@@ -13,7 +17,9 @@ class BattleConfiguration;
 class ChallengeInfo;
 class Battle;
 class UserInfo;
-class TrainerTeam;
+class TeamHolder;
+class ProtocolVersion;
+class ServerInfo;
 
 /* Commands to dialog with the server */
 namespace NetworkCli
@@ -33,26 +39,29 @@ public:
     Analyzer(bool registry_connection = false);
 
     /* functions called by the client */
-    void login(const FullInfo &team);
-    void sendMessage(const QString &message);
-    void sendChanMessage(int channelid, const QString &message);
+    void login(const TeamHolder &team, bool ladder, const QColor &color, const QString &defaultChannel, const QStringList &autoJoin);
+    /* Sends a logout message, and deletes the analyzer */
+    void logout();
+    Q_INVOKABLE void sendChanMessage(int channelid, const QString &message);
     void connectTo(const QString &host, quint16 port);
-    void sendTeam(const TrainerTeam & team);
-    void sendChallengeStuff(const ChallengeInfo &c);
+    void sendTeam(const TeamHolder & team);
     void sendBattleResult(int id, int result);
     bool isConnected() const;
     void goAway(bool away);
     QString getIp() const;
+    quint32 getCommandCount() const {return commandCount;}
     void disconnectFromHost();
 
     /* Convenience functions to avoid writing a new one every time */
-    void notify(int command);
-    template<class T>
-    void notify(int command, const T& param);
-    template<class T1, class T2>
-    void notify(int command, const T1& param1, const T2& param2);
-    template<class T1, class T2, class T3>
-    void notify(int command, const T1& param1, const T2& param2, const T3 &param3);
+    template <typename ...Params>
+    void notify(int command, Params&&... params) {
+        QByteArray tosend;
+        DataStream out(&tosend, QIODevice::WriteOnly);
+
+        out.pack(uchar(command), std::forward<Params>(params)...);
+
+        emit sendCommand(tosend);
+    }
 signals:
     /* to send to the network */
     void sendCommand(const QByteArray &command);
@@ -64,20 +73,20 @@ signals:
     /* Message to appear in all the mainchats */
     void messageReceived(const QString &mess);
     void htmlMessageReceived(const QString &mess);
+    void channelMessageReceived(const QString &mess, int channel, bool html);
     /* Command specific to a channel */
-    void channelCommandReceived(int command, int channel, QDataStream *stream);
+    void channelCommandReceived(int command, int channel, DataStream *stream);
     /* player from the players list */
     void playerReceived(const PlayerInfo &p);
     /* login of a player */
-    void playerLogin(const PlayerInfo &p);
-    /* Change of team of a player */
-    void teamChanged(const PlayerInfo &p);
+    void playerLogin(const PlayerInfo &p, const QStringList& tiers);
+    void teamApproved(const QStringList &tiers);
     /* logout... */
     void playerLogout(int id);
     /* challengerelated */
     void challengeStuff(const ChallengeInfo &c);
     /* battle including self */
-    void battleStarted(int battleid, int id, const TeamBattle &myteam, const BattleConfiguration &conf);
+    void battleStarted(int battleid, int id1, int id2, const TeamBattle &myteam, const BattleConfiguration &conf);
     /* battle of strangers */
     void battleStarted(int battleid, int id1, int id2);
     void battleFinished(int battleid, int res, int srcid, int destid);
@@ -85,12 +94,14 @@ signals:
     void spectatedBattle(int battleId, const BattleConfiguration &conf);
     void spectatingBattleMessage(int battleId, const QByteArray &mess);
     void spectatingBattleFinished(int battleId);
-    void passRequired(const QString &salt);
-    void serverPassRequired(const QString &salt);
+    void passRequired(const QByteArray &salt);
+    void serverPassRequired(const QByteArray &salt);
     void notRegistered(bool);
     void playerKicked(int p, int src);
     void playerBanned(int p, int src);
-    void serverReceived(const QString &name, const QString &desc, quint16 num_players, const QString &ip, quint16 max, quint16 port);
+    void playerTempBanned(int p, int src, int time);
+    void regAnnouncementReceived(const QString &announcement);
+    void serverReceived(const ServerInfo &info);
     void PMReceived(int id, const QString &mess);
     void awayChanged(int id, bool away);
     void tierListReceived(const QByteArray &tl);
@@ -98,8 +109,9 @@ signals:
     /* From the control panel */
     void userInfoReceived(const UserInfo &ui);
     void userAliasReceived(const QString &s);
-    void banListReceived(const QString &n, const QString &ip);
-    void versionDiff(const QString &a, const QString &b);
+    void banListReceived(const QString &n, const QString &ip, const QDateTime &expires);
+    void versionDiff(const ProtocolVersion&, int level);
+
     void serverNameReceived(const QString &serverName);
     /* Ranking */
     void rankingStarted(int,int,int);
@@ -109,6 +121,9 @@ signals:
     void addChannel(QString name, int id);
     void channelNameChanged(int id, const QString &name);
     void removeChannel(int id);
+    void reconnectPassGiven(const QByteArray&);
+    void reconnectSuccess();
+    void reconnectFailure(int reason);
 public slots:
     /* slots called by the network */
     void error();
@@ -128,12 +143,13 @@ public slots:
     /* By the control panel */
     void getUserInfo(const QString &name);
     void getBanList();
-    void getTBanList();
     void CPUnban(const QString &name);
-    void CPTUnban(const QString &name);
     /* By the rankings window */
     void getRanking(const QString &tier, const QString &name);
     void getRanking(const QString &tier, int page);
+
+    /* By the challenge window */
+    void sendChallengeStuff(const ChallengeInfo &c);
 
 private:
     /* The connection to the outside */
@@ -142,46 +158,12 @@ private:
     /* To tell if its the registry we're connected to*/
     bool registry_socket;
 
+    quint32 commandCount;
+
     QList<QByteArray> storedCommands;
     QSet<int> channelCommands;
 
     Network mysocket;
 };
-
-template<class T>
-void Analyzer::notify(int command, const T& param)
-{
-    QByteArray tosend;
-    QDataStream out(&tosend, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_4_7);
-
-    out << uchar(command) << param;
-
-    emit sendCommand(tosend);
-}
-
-template<class T1, class T2>
-void Analyzer::notify(int command, const T1& param1, const T2 &param2)
-{
-    QByteArray tosend;
-    QDataStream out(&tosend, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_4_7);
-
-    out << uchar(command) << param1 << param2;
-
-    emit sendCommand(tosend);
-}
-
-template<class T1, class T2, class T3>
-void Analyzer::notify(int command, const T1& param1, const T2 &param2, const T3 &param3)
-{
-    QByteArray tosend;
-    QDataStream out(&tosend, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_4_7);
-
-    out << uchar(command) << param1 << param2 << param3;
-
-    emit sendCommand(tosend);
-}
 
 #endif // ANALYZE_H

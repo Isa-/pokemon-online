@@ -1,60 +1,18 @@
 #ifndef POKEMONSTRUCTS_H
 #define POKEMONSTRUCTS_H
 
-namespace Pokemon {
-class uniqueId;
-}
-unsigned int qHash (const Pokemon::uniqueId &key);
-
+#include "pokemon.h"
+#include "geninfo.h"
 #include <QString>
 #include <QSet>
 #include <QIcon>
 #include <QPixmap>
-#include <QDataStream>
 #include "../Utilities/functions.h"
 #include "enums.h"
 
 class QDomElement;
 class QDomDocument;
-
-namespace Pokemon {
-class uniqueId
-{
-public:
-    quint16 pokenum;
-    quint8 subnum;
-    uniqueId() : pokenum(0), subnum(0) {}
-    uniqueId(int num, int subnum) : pokenum(num), subnum(subnum) {}
-    uniqueId(const uniqueId &id) { pokenum = id.pokenum; subnum = id.subnum; }
-    uniqueId(quint32 pokeRef) {
-        subnum = pokeRef >> 16;
-        pokenum = pokeRef & 0xFFFF;
-    }
-    bool operator == (const uniqueId &other) const {
-        return (pokenum == other.pokenum) && (subnum == other.subnum);
-    }
-    bool operator != (const uniqueId &other) const {
-        return (pokenum != other.pokenum) || (subnum != other.subnum);
-    }
-    bool operator < (const uniqueId &other) const {
-        return (pokenum < other.pokenum) || ((pokenum == other.pokenum) && (subnum < other.subnum));
-    }
-    bool operator > (const uniqueId &other) const {
-        return (pokenum > other.pokenum) || ((pokenum == other.pokenum) && (subnum > other.subnum));
-    }
-    QString toString() const;
-    QString toLine(const QString &data) const;
-    quint32 toPokeRef() const;
-    // Separates pokenum:subnum:1-letter-options data from
-    // the other part of a string.
-    // 'data' will be modified to hold extracted data.
-    // 'remaining' will be modified to hold remaining part.
-    // Will return true if everything is fine. And false otherwise.
-    static bool extract(const QString &raw, uniqueId &id, QString &info, QString *options = NULL);
-    // Extracts short data in a "pokenum data_text" form.
-    static bool extract_short(const QString &from, quint16 &pokenum, QString &remaining);
-};
-}
+class DataStream;
 
 struct AbilityGroup {
     quint8 _ab[3];
@@ -67,6 +25,10 @@ struct AbilityGroup {
 
     int ab(int num) const {
         return _ab[num];
+    }
+
+    bool contains(int num) const {
+        return _ab[0] == num || _ab[1] == num || _ab[2] == num;
     }
 };
 
@@ -99,9 +61,10 @@ public:
 class PokeGeneral
 {
     PROPERTY(Pokemon::uniqueId, num);
-    PROPERTY(quint8, gen);
+    PROPERTY(Pokemon::gen, gen);
 public:
     PokeGeneral();
+    virtual ~PokeGeneral(){}
 
     const AbilityGroup &abilities() const;
     int genderAvail() const;
@@ -136,9 +99,9 @@ class PokePersonal
     PROPERTY(bool, shiny);
     PROPERTY(quint8, happiness);
     PROPERTY(quint8, level);
-    PROPERTY(quint8, gen);
+    PROPERTY(Pokemon::gen, gen);
 protected:
-    int m_moves[4];
+    quint16 m_moves[4];
 
     quint8 m_DVs[6];
     quint8 m_EVs[6];
@@ -150,7 +113,7 @@ public:
 
     /* -1 if the nature is hindering, 0 if neutral and 1 if it boosts that stat */
     int natureBoost(int stat) const;
-    int move(int moveSlot) const;
+    quint16 move(int moveSlot) const;
     /* resets everything to default values */
     void reset();
     /* Removes / Reset things if they are wrong */
@@ -158,6 +121,7 @@ public:
 
     void setMove(int moveNum, int moveSlot, bool check=false) throw (QString);
     int addMove(int moveNum, bool check = false) throw (QString);
+    void removeMove(int movenum);
 
     bool hasMove(int moveNum);
 
@@ -171,6 +135,11 @@ public:
     int EVSum() const;
 
     void setEV(int stat, quint8 EV);
+
+    enum Flags {
+        hasGen, hasNickname, hasPokeball, hasHappiness, hasPPups, hasIVs,
+        isShiny=0
+    };
 };
 
 /* Contains / loads the graphics of a pokemon */
@@ -185,9 +154,9 @@ public:
 
 
     void setNum(Pokemon::uniqueId num);
-    void setGen(int gen);
+    void setGen(Pokemon::gen gen);
     Pokemon::uniqueId num() const;
-    int gen() const;
+    Pokemon::gen gen() const;
 
     void load(int gender, bool shiny);
     void loadIcon(const Pokemon::uniqueId &pokeid);
@@ -198,7 +167,7 @@ protected:
     QIcon m_icon;
     Pokemon::uniqueId m_num;
     int m_storedgender;
-    int m_gen;
+    Pokemon::gen m_gen;
 
     bool m_storedshininess;
     bool m_uptodate;
@@ -214,8 +183,8 @@ public:
 
     Pokemon::uniqueId num() const;
     void setNum(Pokemon::uniqueId num);
-    void setGen(int gen);
-    int gen() const;
+    void setGen(Pokemon::gen gen);
+    Pokemon::gen gen() const;
     void runCheck();
 
     int stat(int statno) const;
@@ -234,45 +203,18 @@ public:
 
 class Team
 {
+    PROPERTY(QString, defaultTier);
 protected:
     PokeTeam m_pokes[6];
-    quint8 m_gen;
+    Pokemon::gen m_gen;
 
 public:
     Team();
-    quint8 gen() const {return m_gen;}
-    void setGen(int gen);
+    Pokemon::gen gen() const {return m_gen;}
+    void setGen(Pokemon::gen gen);
 
     const PokeTeam & poke(int index) const {return m_pokes[index];}
     PokeTeam & poke(int index) {return m_pokes[index];}
-};
-
-class TrainerTeam
-{
-    PROPERTY(quint16, avatar);
-    PROPERTY(QString, defaultTier);
-protected:
-    Team m_team;
-    QString m_trainerNick;
-    QString m_trainerInfo;
-    QString m_trainerWin;
-    QString m_trainerLose;
-
-public:
-    TrainerTeam();
-
-    const Team & team() const;
-    Team & team();
-
-    void setTrainerInfo(const QString &newinfo);
-    void setTrainerWin(const QString &newwin);
-    void setTrainerLose(const QString &newlose);
-    void setTrainerNick(const QString &newnick);
-
-    const QString & trainerInfo() const;
-    const QString & trainerWin() const;
-    const QString & trainerLose() const;
-    const QString & trainerNick() const;
 
     bool loadFromFile(const QString &path);
     void toXml(QDomDocument &doc) const;
@@ -280,31 +222,23 @@ public:
     bool saveToFile(const QString &path) const;
     bool importFromTxt(const QString &path);
     QString exportToTxt() const;
+
+    QString name() const;
+    QString folder() const;
+    QString path() const {return m_path;}
+    void setName(const QString &name);
+    void setFolder(const QString &folder);
+private:
+    mutable QString m_path;
 };
 
 /* Dialog for loading/saving team */
-void saveTTeamDialog(const TrainerTeam &team, QObject *receiver=NULL, const char *slot=NULL);
-void loadTTeamDialog(TrainerTeam &team, QObject *receiver=NULL, const char *slot=NULL);
+void saveTTeamDialog(const Team &team, QObject *receiver=NULL, const char *slot=NULL);
+void loadTTeamDialog(Team &team, QObject *receiver=NULL, const char *slot=NULL);
 
-QDataStream & operator << (QDataStream & out,const Team & team);
-QDataStream & operator << (QDataStream & out,const TrainerTeam & trainerTeam);
+DataStream & operator << (DataStream & out,const Team & team);
 
-QDataStream & operator >> (QDataStream & in,Team & team);
-QDataStream & operator >> (QDataStream & in,PokeTeam & Pokemon);
-QDataStream & operator >> (QDataStream & in,TrainerTeam & trainerTeam);
-
-
-QDataStream & operator << (QDataStream & out,const PokePersonal & Pokemon);
-QDataStream & operator >> (QDataStream & in,PokePersonal & Pokemon);
-
-inline uint qHash(const Pokemon::uniqueId &key)
-{
-    return qHash(key.toPokeRef());
-}
-
-QDataStream & operator << (QDataStream &out, const Pokemon::uniqueId &id);
-QDataStream & operator >> (QDataStream &in, Pokemon::uniqueId &id);
-
-Q_DECLARE_METATYPE(Pokemon::uniqueId);
+DataStream & operator << (DataStream & out,const PokePersonal & Pokemon);
+DataStream & operator >> (DataStream & in,PokePersonal & Pokemon);
 
 #endif // POKEMONSTRUCTS_H

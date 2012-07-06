@@ -5,10 +5,12 @@
 #include "../PokemonInfo/battlestructs.h"
 #include "playerinterface.h"
 #include "sfmlsocket.h"
+#include "playerstructs.h"
 
 class Challenge;
 class BattleSituation;
 class Analyzer;
+class ChangeTeamInfo;
 
 /* a single player */
 /***
@@ -20,73 +22,101 @@ class Player : public QObject, public PlayerInterface
 {
     Q_OBJECT
 
-    PROPERTY(int, rating);
-    PROPERTY(bool, ladder);
-    PROPERTY(bool, showteam);
-    PROPERTY(QString, tier);
-    PROPERTY(quint16, avatar);
-    PROPERTY(QString, defaultTier);
-    PROPERTY(QColor, color);
-    PROPERTY(bool, battleSearch);
     PROPERTY(QString, winningMessage);
     PROPERTY(QString, losingMessage);
+    PROPERTY(bool, battleSearch);
     PROPERTY(QString, lastFindBattleIp);
+    PROPERTY(Flags, spec);
+    PROPERTY(Flags, state);
+    PROPERTY(quint8, reconnectBits);
+    PROPERTY(LoginInfo*, loginInfo);
 public:
+    enum State
+    {
+        LoginAttempt,
+        LoggedIn,
+        Battling,
+        Away,
+        LadderEnabled,
+        WaitingReconnect,
+        DiscardedId
+    };
+
+    enum Spec
+    {
+        First=0,
+        SupportsZipCompression,
+        IdsWithMessage,
+        ReconnectEnabled
+    };
 
     QSet<int> battlesSpectated;
 
-    enum State
-    {
-        NotLoggedIn=0,
-        LoggedIn=1,
-        Battling=2,
-        Away = 4,
-    };
-
+    bool ladder() const;
     Player(const GenericSocket &sock, int id);
     ~Player();
 
     /* returns all the regular info */
-    TeamBattle &team();
-    const TeamBattle &team() const;
-    /* Converts the content of the TeamInfo to a basicInfo and returns it */
-    BasicInfo basicInfo() const;
+    TeamBattle &team(int i = 0);
+    const TeamBattle &team(int i = 0) const;
 
+    void generateReconnectPass();
+    void sendLoginInfo();
     /* Sends a message to the player */
     void sendMessage(const QString &mess, bool html=false);
-    void sendChanMessage(int channel, const QString &mess, bool html=false);
+    void sendPlayers(const QVector<reference<PlayerInfo> > & bundles);
 
     bool hasSentCommand(int commandid) const;
 
+    const QString &name() const;
+    QString &name();
+    const QString &info() const;
+    QString &info();
+    const QColor &color() const;
+    QColor &color();
     int id() const;
-    QString name() const;
     QString ip() const;
     QString proxyIp() const;
-    int gen() const;
+    Pokemon::gen gen(int team) const;
+    int teamCount() const;
+    int rating(const QString &tier);
+    bool hasReconnectPass() const;
 
+    virtual const quint16& avatar() const;
+    quint16 &avatar();
+
+    virtual const QString& description() const;
+    QString &description();
+
+    bool hasTier(const QString &tier) const;
     bool connected() const;
     bool isLoggedIn() const;
     bool battling() const;
+    bool supportsZip() const;
+    bool hasKnowledgeOf(Player *other) const;
     void acquireKnowledgeOf(Player *other);
     void acquireRoughKnowledgeOf(Player *other);
     void addChannel(int chanid);
     void removeChannel(int chanid);
-    bool hasKnowledgeOf(Player *other) const;
     bool isInSameChannel(const Player *other) const;
     bool hasBattle(int battleId) const;
     void addBattle(int battleid);
     void removeBattle(int battleid);
     bool away() const;
+    bool waitingForReconnect() const;
+    bool discarded() const;
     bool inSearchForBattle() const { return battleSearch(); }
     void cancelBattleSearch();
     void changeState(int newstate, bool on);
-    int state() const;
     int auth() const;
     void setAuth (int newAuth);
     void setName (const QString & newName);
     void setInfo(const QString &newInfo);
     const QSet<int> & getBattles() const {
         return battles;
+    }
+    const QSet<QString> &getTiers() const {
+        return tiers;
     }
 
     bool okForChallenge(int src) const;
@@ -96,34 +126,49 @@ public:
     bool okForBattle() const;
     void spectateBattle(int battleId, const BattleConfiguration &battle);
     void sendChallengeStuff(const ChallengeInfo &c);
+    bool inChannel(int chan) const;
 
     QSet<int> &getChannels() {
         return channels;
     }
 
-    void doWhenDC();
+    QStringList getTierList() const;
+
+    void doWhenDC(); // when the player  disconnects, but we still want to keep some info
+    void doWhenDQ(); // when we really want to remove the player
+    void doWhenRC(bool wasLoggedIn); // when the player reconnects
 
     ChallengeInfo getChallengeInfo(int id); /* to get the battle info of a challenge received by that player */
 
     void startBattle(int battleid, int id, const TeamBattle &team, const BattleConfiguration &conf);
-    void battleResult(int battleid, int result, int winner, int loser);
+    void battleResult(int battleid, int result, int mode, int winner, int loser);
 
     void kick();
 
     Analyzer& relay();
     const Analyzer& relay() const;
 
-    PlayerInfo bundle() const;
+    const PlayerInfo& bundle() const;
 
     /* A locked player will stop processing its events */
     void lock();
     void unlock();
     bool isLocked() const;
-    void findTierAndRating();
-    void findRating();
+    void findTierAndRating(bool force=false);
+    void findTier(int slot);
+    void findRatings(bool force = false);
+    void findRating(const QString &tier);
 
-    void executeTierChange(const QString&);
+    void executeTierChange(int num, const QString&);
     void executeAwayChange(bool away);
+
+    void sendPacket(const QByteArray &packet);
+    //Tells that the player has been changed and its updated info should be sent to everyone
+    //onlyInCommand true means that if not during a player command, the info is updated immediately (otherwise at end of player command)
+    void setNeedToBeUpdated(bool onlyInCommand=false);
+    bool testReconnectData(Player *other, const QByteArray &hash);
+    //other used reconnect on us and it worked, it seems
+    void associateWith(Player *other);
 signals:
     void loggedIn(int id, const QString &name);
     void recvMessage(int id, int chanid, const QString &mess);
@@ -138,6 +183,7 @@ signals:
     void info(int id, const QString &);
     void playerKick(int,int);
     void playerBan(int,int);
+    void playerTempBan(int, int, int);
     void PMReceived(int, int, const QString &);
     void awayChange(int, bool);
     void spectatingRequested(int, int);
@@ -145,27 +191,34 @@ signals:
     void spectatingStopped(int, int battleId);
     void findBattle(int,const FindBattleData&);
     void battleSearchCancelled(int);
+    void logout(int);
     void unlocked();
     void joinRequested(int id, const QString &channel);
+    void joinRequested(int id, int channelId);
+    void resendBattleInfos(int id, int battleid);
     void leaveRequested(int id, int channelid);
     void ipChangeRequested(int id, const QString &ip);
+    void reconnect(int req, int id, const QByteArray &hash);
+    void needChannelData(int , int channel);
 public slots:
-    void loggedIn(TeamInfo &team,bool,bool, QColor);
-    void serverPasswordSent(const QString &hash);
+    void loggedIn(LoginInfo *info);
+    void serverPasswordSent(const QByteArray &hash);
     void recvMessage(int chan, const QString &mess);
-    void recvTeam(TeamInfo &team);
+    void recvTeam(const ChangeTeamInfo &info);
     void disconnected();
     void challengeStuff(const ChallengeInfo &c);
     void battleForfeited(int id);
     void battleMessage(int id, const BattleChoice &b);
     void battleChat(int id, const QString &s);
     void registerRequest();
-    void hashReceived(const QString &hash);
+    void hashReceived(const QByteArray &hash);
     void playerKick(int);
     void playerBan(int);
+    void playerTempBan(int player, int time);
+    void onReconnect(int id, const QByteArray &hash);
     void CPBan(const QString &name);
     void CPUnban(const QString &name);
-    //void CPTBan(const QString &name, int time);
+    void CPTBan(const QString &name, int time);
     void receivePM(int, const QString&);
     void userInfoAsked(const QString& name);
     void giveBanList();
@@ -174,37 +227,42 @@ public slots:
     void spectatingChat(int id, const QString &chat);
     void quitSpectating(int id);
     void ladderChange(bool);
-    void showTeamChange(bool);
-    void changeTier(const QString&);
+    void changeTier(quint8 team, const QString&);
     void findBattle(const FindBattleData&);
     void getRankingsByPage(const QString &tier, int page);
     void getRankingsByName(const QString &tier, const QString &name);
     void displayRankings();
-    void tUnban(QString name);
     void testAuthentificationLoaded();
     void ratingLoaded();
     void joinRequested(const QString &channel);
     void leaveRequested(int slotid);
     void ipChangeRequested(const QString &ip);
     void autoKick();
+    void sendUpdatedIfNeeded();
+    void logout();
 private:
-    TeamBattle myteam;
     Analyzer *myrelay;
     int lockCount;
 
-    int myid;
-    int myauth;
     QString myip;
     QString proxyip;
     bool ontologin;
     mutable int lastcommand;
-    bool server_pass_sent; // XXX: maybe integrate into state? Probably needs client side things too
+    mutable PlayerInfo m_bundle;
 
-    int m_state;
-    TeamInfo *waiting_team;
+    bool server_pass_sent; // XXX: maybe integrate into state? Probably needs client side things too
+    /* When you want to break down in Analyzer a command in several signals, but you don't want to
+      send the updated player info to every player online, use setNeedToUpdate(true) instead of
+      emit updated(id). At the end of the command, the updated signal will automatically be sent */
+    bool needToUpdate;
+
+    TeamsHolder m_teams;
     QString waiting_name;
+    QByteArray waiting_pass; //Serves as Server Pass during the first login phase, reconnect pass after that
 
     QSet<int> battles;
+    QHash<QString, quint16> &ratings();
+    QSet<QString> tiers;
     QSet<Challenge*> challenged;
     QSet<Challenge*> challengedBy;
 
@@ -243,37 +301,24 @@ private:
     /* The channels a player is on */
     QSet<int> channels;
 
-    void assignTeam(TeamInfo &team);
+    /* Autojoin Channels */
+    QStringList additionalChannels;
+
     void assignNewColor(const QColor &c);
+    void assignTrainerInfo(const TrainerInfo &info);
     bool testNameValidity(const QString &name);
     void loginSuccess();
-    void changeWaitingTeam(const TeamInfo &t);
-    void removeWaitingTeam();
     /* only call when sure there is one battle */
     int firstBattleId();
+    /* called when all ratings are found */
+    void ratingsFound();
+    void syncTiers(QString oldTier);
+    /* Are we currently executing code directly in response to a network command received from this player ? */
+    bool isInCommand() const;
+
+    void doConnections();
 
     void testAuthentification(const QString &name);
-};
-
-class TempBan : public QObject
-{
-    Q_OBJECT
-public:
-        TempBan(const QString& na,const int& ti);
-        ~TempBan();
-        void start();
-        int time() const;
-        QString name() const;
-signals:
-        void end(QString);
-
-public slots:
-        void done();
-
-private:
-        QTimer *mytimer;
-        QString myname;
-        int mytime;
 };
 
 #endif // PLAYER_H

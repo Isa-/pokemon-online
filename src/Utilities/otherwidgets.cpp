@@ -95,8 +95,18 @@ static QBitmap mask(const QPixmap &p)
 }
 #endif
 
+QImageButton::QImageButton(QWidget *w)
+    : QAbstractButton(w)
+{
+    /* Both are necessary for some styles */
+    setMouseTracking(true);
+    setAttribute(Qt::WA_Hover, true);
+
+    lastState = Normal;
+}
+
 QImageButton::QImageButton(const QString &normal, const QString &hovered, const QString &checked)
-    : myPic(normal), myHoveredPic(hovered), lastUnderMouse(-1), pressed(false)
+    : myPic(normal), myHoveredPic(hovered), pressed(false)
 {
     setFixedSize(myPic.size());
 #if defined(WIN32) || defined(WIN64)
@@ -115,9 +125,26 @@ QImageButton::QImageButton(const QString &normal, const QString &hovered, const 
 void QImageButton::changePics(const QString &normal, const QString &hovered, const QString &checked)
 {
     myPic = QPixmap(normal);
+    setFixedSize(myPic.size());
+
     myHoveredPic = QPixmap(hovered);
     if (checked != "")
         myCheckedPic = QPixmap(checked);
+
+#if defined(WIN32) || defined(WIN64)
+    setMask(lastState == Checked ? ::mask(myCheckedPic) : (lastState == Normal ? ::mask(myPic) : ::mask(myHoveredPic)));
+#endif
+
+    update();
+}
+
+void QImageButton::changePics(const QPixmap &normal, const QPixmap &hovered, const QPixmap &checked)
+{
+    myPic = normal;
+    setFixedSize(myPic.size());
+
+    myHoveredPic = hovered;
+    myCheckedPic = checked;
 
 #if defined(WIN32) || defined(WIN64)
     setMask(lastState == Checked ? ::mask(myCheckedPic) : (lastState == Normal ? ::mask(myPic) : ::mask(myHoveredPic)));
@@ -178,15 +205,14 @@ void QImageButton::paintEvent(QPaintEvent *e)
         setMask(lastState == Checked ? ::mask(myCheckedPic) : (lastState == Normal ? ::mask(myPic) : ::mask(myHoveredPic)));
 #endif
     }
-
-    lastUnderMouse = underMouse();
 }
 
-void QImageButton::mouseMoveEvent(QMouseEvent *)
+bool QImageButton::event(QEvent *e)
 {
-    if (int(underMouse()) == lastUnderMouse)
-        return;
-    update();
+    if (e->type() == QEvent::HoverLeave || e->type() == QEvent::HoverEnter) {
+        update();
+    }
+    return QAbstractButton::event(e);
 }
 
 QIdTreeWidgetItem::QIdTreeWidgetItem(int id, const QStringList &text)
@@ -239,12 +265,17 @@ int QIdListWidgetItem::id() const
     return myid;
 }
 
+void QIdListWidgetItem::setId(int id)
+{
+    myid = id;
+}
+
 void QIdListWidgetItem::setColor(const QColor &c)
 {
     setForeground(QBrush(c));
 }
 
-QScrollDownTextBrowser::QScrollDownTextBrowser()
+QScrollDownTextBrowser::QScrollDownTextBrowser(QWidget *parent) : QTextBrowser(parent)
 {
     autoClear = true;
     setReadOnly(true);
@@ -430,18 +461,6 @@ QValidator::State QNickValidator::validate(const QString &input) const
 QValidator::State QNickValidator::validate(QString &input, int &) const
 {
     return validate(input);
-}
-
-QImageButtonLR::QImageButtonLR(const QString &normal, const QString &hovered)
-    :QImageButton(normal,hovered)
-{}
-
-void QImageButtonLR::mouseReleaseEvent(QMouseEvent *ev)
-{
-    if(ev->button() == Qt::LeftButton)
-        emit leftClick();
-    else if (ev->button() == Qt::RightButton)
-        emit rightClick();
 }
 
 void QClickPBar::mousePressEvent(QMouseEvent *)
@@ -686,4 +705,25 @@ void QDraggableLabel::mousePressEvent(QMouseEvent *)
     drag->setMimeData(data);
 
     drag->exec();
+}
+
+QDragReactiveTabWidget::QDragReactiveTabWidget(QWidget *parent)
+    :QTabWidget(parent)
+{
+    setAcceptDrops(true);
+}
+
+void QDragReactiveTabWidget::dragEnterEvent(QDragEnterEvent * event)
+{
+    event->setDropAction(Qt::MoveAction);
+    event->accept();
+}
+
+void QDragReactiveTabWidget::dragMoveEvent(QDragMoveEvent *event)
+{
+    int tab = tabBar()->tabAt(event->pos());
+
+    if (tab != -1) {
+        setCurrentIndex(tab);
+    }
 }

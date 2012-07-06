@@ -7,6 +7,9 @@
 class Player;
 class Server;
 class QScrollDownTextBrowser;
+#ifdef USE_WEBCONF
+class RegistryWebInterface;
+#endif
 
 class Registry: public QObject
 {
@@ -30,18 +33,23 @@ private slots:
     /* timers */
     void updateTBanList();
     void tbanListReceived(QNetworkReply*);
+
+    void updateRegistryAnnouncement();
+
 private:
     QTcpServer forServers;
     QHash<int, Server *> servers;
     QSet<QString> names;
     QSet<QString> serverAddresses;
 
-    QTcpServer forPlayers;
+    QTcpServer forPlayers[2];
     QHash<int, Player *> players;
 
     QSet<QString> bannedIPs;
     QSet<QString> tbanIPs;
     QHash<QString, int> ipCounter;
+
+    QString registry_announcement;
 
     QNetworkAccessManager manager;
 
@@ -49,6 +57,10 @@ private:
     int linecount;
 
     int freeid() const;
+#ifdef USE_WEBCONF
+    RegistryWebInterface *web_interface;
+    friend class RegistryWebInterface;
+#endif
 };
 
 #endif // REGISTRY_H

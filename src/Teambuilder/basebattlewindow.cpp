@@ -9,6 +9,7 @@
 #include "../BattleManager/battleinput.h"
 #include "poketextedit.h"
 #include "../Shared/battlecommands.h"
+#include "../Utilities/coreclasses.h"
 
 using namespace BattleCommands;
 
@@ -29,23 +30,21 @@ BaseBattleInfo::BaseBattleInfo(const PlayerInfo &me, const PlayerInfo &opp, int 
 }
 
 BaseBattleWindow::BaseBattleWindow(const PlayerInfo &me, const PlayerInfo &opponent, const BattleConfiguration &conf,
-                                   int _ownid, Client *client) : ignoreSpecs(NoIgnore), _mclient(client)
+                                   int _ownid) : ignoreSpecs(NoIgnore)
 {
-    init(me, opponent, conf, _ownid, client);
+    init(me, opponent, conf, _ownid);
 }
 
 void BaseBattleWindow::init(const PlayerInfo &me, const PlayerInfo &opponent, const BattleConfiguration &_conf,
-                            int _ownid, Client *client)
+                            int _ownid)
 {
-    _mclient = client;
-
     ownid() = _ownid;
     conf() = _conf;
     conf().receivingMode[0] = this->conf().receivingMode[1] = BattleConfiguration::Spectator;
     conf().avatar[0] = me.avatar;
     conf().avatar[1] = opponent.avatar;
-    conf().name[0] = me.team.name;
-    conf().name[1] = opponent.team.name;
+    conf().name[0] = me.name;
+    conf().name[1] = opponent.name;
 
     myInfo = new BaseBattleInfo(me, opponent, conf().mode);
     info().gen = conf().gen;
@@ -116,9 +115,8 @@ void BaseBattleWindow::init()
     replay = LogManager::obj()->createLog(ReplayLog, title);
     replay->override = Log::OverrideNo;
 
-    replayData.data = "battle_logs_v1\n";
-    QDataStream stream(&replayData.data, QIODevice::Append);
-    stream.setVersion(QDataStream::Qt_4_7);
+    replayData.data = "battle_logs_v2\n";
+    DataStream stream(&replayData.data, QIODevice::Append);
     stream << conf();
     replayData.t.start();
 
@@ -133,8 +131,8 @@ void BaseBattleWindow::init()
     mylayout->addWidget(flashWhenMoveDone = new QCheckBox(tr("Flash when a move is done")), 1, 2, 1, 2);
 
     QSettings s;
-    musicOn->setChecked(s.value("play_battle_music").toBool() || s.value("play_battle_cries").toBool());
-    flashWhenMoveDone->setChecked(s.value("flash_when_enemy_moves").toBool());
+    musicOn->setChecked(s.value("BattleAudio/PlayMusic").toBool() || s.value("play_battle_cries").toBool());
+    flashWhenMoveDone->setChecked(s.value("Battle/FlashOnMove").toBool());
 
     QVBoxLayout *chat = new QVBoxLayout();
     columns->addLayout(chat);
@@ -204,12 +202,12 @@ void BaseBattleWindow::musicPlayStop()
     }
 
     QSettings s;
-    audioOutput->setVolume(float(s.value("battle_music_volume").toInt())/100);
-    cryOutput->setVolume(float(s.value("battle_cry_volume").toInt())/100);
+    audioOutput->setVolume(float(s.value("BattleAudio/MusicVolume").toInt())/100);
+    cryOutput->setVolume(float(s.value("BattleAudio/CryVolume").toInt())/100);
 
     if (musicPlayed()) {
-        playBattleCries() = s.value("play_battle_sounds").toBool();
-        playBattleMusic() = s.value("play_battle_music").toBool() || !s.value("play_battle_cries").toBool();
+        playBattleCries() = s.value("BattleAudio/PlaySounds").toBool();
+        playBattleMusic() = s.value("BattleAudio/PlayMusic").toBool() || !s.value("play_battle_cries").toBool();
     }
 
     if (!playBattleMusic()) {
@@ -217,7 +215,7 @@ void BaseBattleWindow::musicPlayStop()
     }
 
     /* If more than 5 songs, start with a new music, otherwise carry on where it left. */
-    QDir directory = QDir(s.value("battle_music_directory").toString());
+    QDir directory = QDir(s.value("BattleAudio/MusicDirectory").toString());
     QStringList files = directory.entryList(QStringList() << "*.mp3" << "*.ogg" << "*.wav" << "*.it" << "*.mid" << "*.m4a" << "*.mp4",
                                             QDir::Files | QDir::NoSymLinks | QDir::Readable, QDir::Name);
 
@@ -307,6 +305,9 @@ QString BaseBattleWindow::name(int spot) const
 
 void BaseBattleWindow::checkAndSaveLog()
 {
+    if (!log) {
+        return;
+    }
     log->pushList(test->getLog()->getLog());
     log->pushHtml("</body>");
     replay->setBinary(replayData.data);
@@ -338,6 +339,7 @@ void BaseBattleWindow::disable()
 {
     mysend->setDisabled(true);
     myline->setDisabled(true); 
+    checkAndSaveLog();
 
     test->getInput()->entryPoint(BattleEnum::BlankMessage);
     auto mess = std::shared_ptr<QString>(new QString(toBoldColor(tr("The window was disabled due to one of the players closing the battle window."), Qt::blue)));
@@ -347,6 +349,7 @@ void BaseBattleWindow::disable()
 void BaseBattleWindow::clickClose()
 {
     emit closedBW(battleId());
+    close();
     return;
 }
 
@@ -371,8 +374,7 @@ void BaseBattleWindow::receiveInfo(QByteArray inf)
         }
     }
 
-    QDataStream stream(&replayData.data, QIODevice::Append);
-    stream.setVersion(QDataStream::Qt_4_7);
+    DataStream stream(&replayData.data, QIODevice::Append);
     stream << quint32(replayData.t.elapsed()) << inf;
 
     test->receiveData(inf);
@@ -424,9 +426,9 @@ void BaseBattleWindow::onKo(int spot)
     switchToNaught(spot);
 }
 
-void BaseBattleWindow::onSpectatorJoin(int id, const QString &)
+void BaseBattleWindow::onSpectatorJoin(int id, const QString &n)
 {
-    addSpectator(true, id);
+    addSpectator(true, id, n);
 }
 
 void BaseBattleWindow::onSpectatorLeave(int id)
@@ -439,7 +441,7 @@ void BaseBattleWindow::onBattleEnd(int, int)
     battleEnded = true;
 }
 
-void BaseBattleWindow::addSpectator(bool come, int id)
+void BaseBattleWindow::addSpectator(bool come, int id, const QString &)
 {
     if (come) {
         spectators.insert(id);

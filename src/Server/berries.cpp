@@ -7,17 +7,9 @@ typedef BattleSituation BS;
 
 struct BMStatusBerry : public BM
 {
-    /* In gen 2, status berries activate at end of turn */
     BMStatusBerry() {
-        functions["UponSetup"] = &ascheck;
-        functions["AfterStatusChange"] = &ascheck;
-        functions["EndTurn8.0"] = &asc;
-    }
-
-    static void ascheck(int s, int, BS &b) {
-        if (b.gen() > 2) {
-            asc(s, s, b);
-        }
+        functions["UponSetup"] = &asc;
+        functions["AfterStatusChange"] = &asc;
     }
 
     static void asc(int s, int, BS &b) {
@@ -174,7 +166,7 @@ struct BMAntiSuperEffective : public BM
     }
 
     static void m3b(int s, int t, BS &b) {
-        if (!b.hasSubstitute(s) && turn(b,t)["TypeMod"].toInt() > 4 && tmove(b,t).type == poke(b,s)["ItemArg"].toInt()) {
+        if (!b.hasSubstitute(s) && fturn(b,t).typeMod > 4 && tmove(b,t).type == poke(b,s)["ItemArg"].toInt()) {
             b.sendBerryMessage(4,s,0,t,b.poke(s).item(),move(b,t));
             b.eatBerry(s,false);
 
@@ -212,7 +204,7 @@ struct BMSuperHP : public BM
     static void uodr(int s, int t, BS &b) {
         if (b.koed(s))
             return;
-        if (turn(b,t)["TypeMod"].toInt() <= 4)
+        if (fturn(b,t).typeMod <= 4)
             return;
         if (b.poke(s).isFull())
             return;
@@ -382,7 +374,7 @@ struct BMBerryRecoil : public BM
 
     static void uodr(int s, int t, BS &b) {
         //Magic Guard
-        if (tmove(b,s).category != poke(b,s)["ItemArg"].toInt() || b.koed(t) || b.hasWorkingAbility(t, Ability::MagicGuard)) {
+        if (tmove(b,t).category != poke(b,s)["ItemArg"].toInt() || b.koed(t) || b.hasWorkingAbility(t, Ability::MagicGuard)) {
             return;
         }
         b.eatBerry(s);

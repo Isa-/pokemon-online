@@ -1,475 +1,410 @@
-#include "../Utilities/otherwidgets.h"
-#include "../PokemonInfo/pokemoninfo.h"
-#include "../PokemonInfo/pokemonstructs.h"
-#include "../PokemonInfo/movesetchecker.h"
-#include "teambuilder.h"
-#include "poketablemodel.h"
-#include "pokemovesmodel.h"
-#include "box.h"
+#include "../Utilities/functions.h"
+#include "Teambuilder/teambuilder.h"
+#include "Teambuilder/trainermenu.h"
+#include "Teambuilder/teamholder.h"
 #include "mainwindow.h"
-#include "pokedex.h"
-#include "dockinterface.h"
-#include "theme.h"
-#include "modelenum.h"
-#include "trainerbody.h"
-#include "teambody.h"
-#include "teamimporter.h"
+#include "Teambuilder/teammenu.h"
+#include "Teambuilder/pokeboxes.h"
+#include "Teambuilder/poketablemodel.h"
+#include "../PokemonInfo/pokemoninfo.h"
 
-/***********************************/
-/**** TEAMBUILDER ******************/
-/***********************************/
+#ifdef _WIN32
+#include "../../SpecialIncludes/zip.h"
+#else
+#include <zip.h>
+#endif
 
+#include <cerrno>
 
-TeamBuilder::TeamBuilder(TrainerTeam *pub_team) : m_teamBody(NULL), m_boxes(NULL), m_pokedex(NULL), m_team(pub_team)
+TeamBuilder::TeamBuilder(TeamHolder *team, bool load) : m_team(team), teamMenu(NULL), boxesMenu(NULL)
 {
-    for (int i = 0; i < NUMBER_GENS; i++)
-        gens[i] = NULL;
-
-    qRegisterMetaType<Pokemon::uniqueId>("Pokemon::uniqueId");
-
-    setAttribute(Qt::WA_DeleteOnClose, true);
-
     setWindowTitle(tr("Teambuilder"));
 
-    memset(modified,false,6);
+    addWidget(trainer = new TrainerMenu(team));
+    pokemonModel = new PokeTableModel(team->team().gen(), this);
 
-    QVBoxLayout *vl =  new QVBoxLayout(this);
-    vl->setSpacing(0);
-    vl->setMargin(2);
-
-    QHBoxLayout *upButtons = new QHBoxLayout();
-    upButtons->setMargin(0);
-    upButtons->setSpacing(0);
-    vl->addLayout(upButtons, 54);
-
-    /* Buttons of pokemons / trainers */
-    QImageButton * m_trainer = Theme::Button("trainer");
-    upButtons->addWidget(m_trainer,0,Qt::AlignTop);
-    m_trainer->setAccessibleName(tr("Trainer"));
-
-    QImageButton * m_team = Theme::Button("team");
-    upButtons->addWidget(m_team,0,Qt::AlignTop);
-    m_team->setAccessibleName(tr("Team"));
-
-    QImageButton * m_box = Theme::Button("box");
-    upButtons->addWidget(m_box,0,Qt::AlignTop);
-    m_box->setAccessibleName(tr("Box"));
-
-    QImageButton * m_pokedexb = Theme::Button("pokedex");
-    upButtons->addWidget(m_pokedexb,0,Qt::AlignTop);
-    m_pokedexb->setAccessibleName(tr("Pokedex"));
-
-    currentZoneLabel = new QLabel();
-    currentZoneLabel->setPixmap(Theme::Sprite("poketrainer"));
-    upButtons->addWidget(currentZoneLabel,0, Qt::AlignTop);
-
-    pokeModel = new PokeTableModel(gen(), this);
-
-    /* Starting doing the "body" */
-    m_body = new QStackedWidget(this);
-    m_body->layout()->setMargin(0);
-
-    /* Trainer body */
-    m_trainerBody = new TB_TrainerBody(trainerTeam());
-    m_body->addWidget(m_trainerBody);
-
-    vl->addWidget(m_body, 585-2*54);
-
-    QHBoxLayout *downButtons = new QHBoxLayout();
-
-    QImageButton * m_new = Theme::Button("new");
-    downButtons->addWidget(m_new, 0, Qt::AlignBottom);
-    m_new->setAccessibleName(tr("New team"));
-
-    QImageButton * m_load = Theme::Button("load");
-    downButtons->addWidget(m_load, 0, Qt::AlignBottom);
-    m_load->setAccessibleName(tr("Load team"));
-
-    QImageButton * m_save = Theme::Button("save");
-    downButtons->addWidget(m_save, 0, Qt::AlignBottom);
-    m_save->setAccessibleName(tr("Save team"));
-
-    QImageButton * m_close = Theme::Button("close");
-    downButtons->addWidget(m_close, 0, Qt::AlignBottom);
-    m_close->setAccessibleName(tr("Close teambuilder"));
-    m_close->setAccessibleDescription(tr("Closes the teambuilder and applies the changes to the team"));
-
-    downButtons->setMargin(0);
-    downButtons->setSpacing(0);
-
-    downButtons->addSpacing(currentZoneLabel->width());
-
-    vl->addLayout(downButtons, 54);
-
-    buttons[0] = m_trainer;
-    buttons[1] = m_team;
-    buttons[2] = m_box;
-    buttons[3] = m_pokedexb;
-
-    for (unsigned i = 0; i < sizeof(buttons)/sizeof(QImageButton*); i++) {
-        buttons[i]->setCheckable(true);
+    if (load) {
+        loadSettings(this, defaultSize());
     }
 
-    m_trainer->setChecked(true);
-
-    connect(m_trainer, SIGNAL(clicked()), SLOT(changeToTrainer()));
-    connect(m_team, SIGNAL(clicked()), SLOT(changeToTeam()));
-    connect(m_box, SIGNAL(clicked()), SLOT(changeToBoxes()));
-    connect(m_pokedexb, SIGNAL(clicked()), SLOT(changeToPokedex()));
-    connect(m_new, SIGNAL(clicked()), SLOT(newTeam()));
-    connect(m_load, SIGNAL(clicked()), SLOT(loadTeam()));
-    connect(m_save, SIGNAL(clicked()), SLOT(saveTeam()));
-    connect(m_close, SIGNAL(clicked()), SIGNAL(done()));
-
-    loadSettings(this, defaultSize());
-
-    updateAll();
-}
-
-void TeamBuilder::initBox()
-{
-    m_boxes = new TB_PokemonBoxes(team());
-    m_body->addWidget(m_boxes);
-
-    connect(m_boxes, SIGNAL(pokeChanged(int)), SLOT(pokeChanged(int)));
-}
-
-void TeamBuilder::initPokedex()
-{
-    m_pokedex = new Pokedex(this, pokeModel);
-    m_body->addWidget(m_pokedex);
-}
-
-void TeamBuilder::initTeam()
-{
-    m_teamBody = new TB_TeamBody(this, trainerTeam(), gen(), pokeModel);
-    m_body->addWidget(m_teamBody);
-}
-
-int TeamBuilder::gen() const
-{
-    return team()->gen();
-}
-
-Team* TeamBuilder::team()
-{
-    return & m_team->team();
-}
-
-TrainerTeam * TeamBuilder::trainerTeam()
-{
-    return m_team;
-}
-
-Team* TeamBuilder::team() const
-{
-    return & m_team->team();
-}
-
-TrainerTeam * TeamBuilder::trainerTeam() const
-{
-    return m_team;
-}
-
-void TeamBuilder::pokeChanged(int poke)
-{
-    modified[poke] = true;
-}
-
-void TeamBuilder::changeZone()
-{
-    if (m_body->currentIndex() == TrainerW)
-        changeToTeam();
-    else
-        changeToTrainer();
-}
-
-void TeamBuilder::genChanged() {
-    int gen = sender()->property("gen").toInt();
-
-    pokeModel->setGen(gen);
-
-    if (m_teamBody) {
-        m_teamBody->changeGeneration(gen);
-    }
-}
-
-void TeamBuilder::changeToTeam()
-{    if (m_teamBody == NULL) {
-        initTeam();
-    }
-    buttons[m_body->currentIndex()]->setChecked(false);
-
-    m_body->setCurrentWidget(m_teamBody);
-    buttons[TeamW]->setChecked(true);
-
-    currentZoneLabel->setPixmap(Theme::Sprite("poketeam"));
-
-    for (int i = 0; i < 6; i++) {
-        if (modified[i]) {
-            m_teamBody->updatePoke(i);
-            modified[i] = false;
-        }
-    }
-}
-
-void TeamBuilder::changeToBoxes()
-{
-    if (m_boxes == NULL) {
-        initBox();
-    }
-
-    buttons[m_body->currentIndex()]->setChecked(false);
-
-    m_body->setCurrentWidget(m_boxes);
-    buttons[BoxesW]->setChecked(true);
-
-    currentZoneLabel->setPixmap(Theme::Sprite("pokebox"));
-
-    updateBox();
-}
-
-void TeamBuilder::changeToTrainer()
-{
-    if (m_body->currentWidget() != m_trainerBody) {
-        buttons[m_body->currentIndex()]->setChecked(false);
-        m_body->setCurrentWidget(m_trainerBody);
-
-        buttons[TrainerW]->setChecked(true);
-        currentZoneLabel->setPixmap(Theme::Sprite("poketrainer"));
-    }
-}
-
-void TeamBuilder::changeToPokedex()
-{
-    if (m_pokedex == NULL) {
-        initPokedex();
-    }
-
-    buttons[m_body->currentIndex()]->setChecked(false);
-
-    m_body->setCurrentWidget(m_pokedex);
-
-    currentZoneLabel->setPixmap(Theme::Sprite("pokedex"));
-}
-
-void TeamBuilder::saveTeam()
-{
-    saveTTeamDialog(*trainerTeam());
-}
-
-void TeamBuilder::loadTeam()
-{
-    loadTTeamDialog(*trainerTeam(), this, SLOT(updateAll()));
-}
-
-void TeamBuilder::newTeam()
-{
-    if (QMessageBox::question(this, tr("New Team"), tr("You sure?"), QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
-        for (int i = 0; i < 6; i++) {
-            team()->poke(i) = PokeTeam();
-            team()->poke(i).setGen(trainerTeam()->team().gen());
-        }
-        updateTeam();
-    }
-}
-
-void TeamBuilder::clickOnDone()
-{
-    emit done();
-}
-
-void TeamBuilder::updateAll()
-{
-    updateTrainer();
-    updateTeam();
-    updateBox();
-}
-
-void TeamBuilder::updateTeam()
-{
-    if (gens[team()->gen()-GEN_MIN]) {
-        gens[team()->gen()-GEN_MIN]->setChecked(true);
-    }
-
-    if (m_teamBody) {
-        m_teamBody->updateTeam();
-    }
-}
-
-void TeamBuilder::updateTrainer()
-{
-    m_trainerBody->updateTrainer();
-}
-
-void TeamBuilder::updateBox()
-{
-    if (m_boxes) {
-        m_boxes->updateBox();
-    }
-}
-
-QMenuBar * TeamBuilder::createMenuBar(MainEngine *w)
-{
-    QMenuBar *menuBar = new QMenuBar();
-    menuBar->setObjectName("TeamBuilder");
-    QMenu *menuFichier = menuBar->addMenu(tr("&File"));
-    menuFichier->addAction(tr("&New team"),this,SLOT(newTeam()),Qt::CTRL+Qt::Key_N);
-    menuFichier->addAction(tr("&Save team"),this,SLOT(saveTeam()),Qt::CTRL+Qt::Key_S);
-    menuFichier->addAction(tr("&Load team"),this,SLOT(loadTeam()),Qt::CTRL+Qt::Key_L);
-    menuFichier->addAction(tr("&Import from text"),this,SLOT(importFromTxt()),Qt::CTRL+Qt::Key_I);
-    menuFichier->addAction(tr("&Export to text"),this,SLOT(exportToTxt()),Qt::CTRL+Qt::Key_E);
-    menuFichier->addAction(tr("&Quit"),qApp,SLOT(quit()),Qt::CTRL+Qt::Key_Q);
-
-    w->addStyleMenu(menuBar);
-    w->addThemeMenu(menuBar);
-
-    QMenu *gen = menuBar->addMenu(tr("&Gen."));
-    QActionGroup *gens = new QActionGroup(gen);
-
-    QString genStrings[] = {tr("Stadium (&1st gen)"), tr("GSC (&2nd gen)"), tr("Advance (&3rd gen)"),
-                            tr("HGSS (&4th gen)"),tr("B/W (&5th gen)")};
-
-    for (int i = 0; i < NUMBER_GENS; i++) {
-        this->gens[i] = gen->addAction(genStrings[i], this, SLOT(genChanged()));
-        this->gens[i]->setCheckable(true);
-        this->gens[i]->setProperty("gen", i + GEN_MIN);
-        gens->addAction(this->gens[i]);
-    }
-
-    this->gens[team()->gen()-GEN_MIN]->setChecked(true);
-
-    QMenu *view = menuBar->addMenu(tr("&Options"));
-    QAction *items = view->addAction(tr("&Show all items"));
-    view->addAction(tr("&Full Screen (for netbook users ONLY)"), this, SLOT(showNoFrame()), Qt::Key_F11);
-    QAction *forceMinLevels = view->addAction(tr("Enforce &minimum levels"));
-
-    QSettings s;
-    items->setCheckable(true);
-    items->setChecked(s.value("show_all_items").toBool());
-    forceMinLevels->setCheckable(true);
-    forceMinLevels->setChecked(MoveSetChecker::enforceMinLevels);
-
-    connect(items, SIGNAL(toggled(bool)), this, SLOT(changeItemDisplay(bool)));
-    connect(forceMinLevels, SIGNAL(toggled(bool)), this, SLOT(enforceMinLevels(bool)));
-
-    /* Loading mod menu */
-    QSettings s_mod(PoModLocalPath + "mods.ini", QSettings::IniFormat);
-    QStringList mods = s_mod.childGroups();
-    modActionGroup = new QActionGroup(menuBar);
-    if (mods.size() > 0) {
-        int general_pos = mods.indexOf("General");
-        if (general_pos != -1) {
-            mods.removeAt(general_pos);
-        }
-        if (mods.size() > 0) {
-            int mod_selected = s_mod.value("active", 0).toInt();
-            bool is_mod_selected = mod_selected > 0;
-            QMenu *menuMods = menuBar->addMenu(tr("&Mods"));
-
-            // No mod option.
-            QAction *action_no_mod = menuMods->addAction(tr("No mod"), this, SLOT(setNoMod()));
-            action_no_mod->setCheckable(true);
-            modActionGroup->addAction(action_no_mod);
-            if (!is_mod_selected) action_no_mod->setChecked(true);
-            menuMods->addSeparator();
-
-            // Add mods to menu.
-            QStringListIterator mods_it(mods);
-            while (mods_it.hasNext()) {
-                QString current = mods_it.next();
-                QAction *ac = menuMods->addAction(current, this, SLOT(changeMod()));
-                ac->setCheckable(true);
-                if (is_mod_selected && (mod_selected == s_mod.value(current + "/id", 0).toInt())) {
-                    ac->setChecked(true);
-                }
-                modActionGroup->addAction(ac);
-            }
-        }
-    }
-
-    return menuBar;
-}
-
-void TeamBuilder::changeMod()
-{
-    PokemonInfo::reloadMod(FillMode::Client, modActionGroup->checkedAction()->text());
-    // TODO: MoveSetChecker::init("db/pokes/"); ?
-}
-
-void TeamBuilder::setNoMod()
-{
-    PokemonInfo::reloadMod(FillMode::Client);
-}
-
-void TeamBuilder::changeItemDisplay(bool b)
-{
-    QSettings s;
-    s.setValue("show_all_items", b);
-
-    if (m_teamBody) {
-        for (int i = 0; i < 6; i++) {
-            m_teamBody->reloadItems(b);
-        }
-    }
-}
-
-void TeamBuilder::enforceMinLevels(bool enforce)
-{
-    QSettings s;
-    s.setValue("enforce_min_levels", enforce);
-    MoveSetChecker::enforceMinLevels = enforce;
-}
-
-void TeamBuilder::showNoFrame()
-{
-    bool static k=false;//if it is full screen?
-    if(k){
-        topLevelWidget()->showNormal();
-        k=false;
-    }else{
-        topLevelWidget()->showFullScreen();
-        k=true;
-    }
-}
-
-void TeamBuilder::importFromTxt()
-{
-    if (m_import) {
-        m_import->raise();
-        return;
-    }
-    m_import=new TeamImporter();
-    m_import->show();
-    connect(m_import, SIGNAL(done(QString)), SLOT(importDone(QString)));
-}
-
-void TeamBuilder::importDone(const QString &text)
-{
-    trainerTeam()->importFromTxt(text);
-    updateTeam();
-}
-
-void TeamBuilder::exportToTxt()
-{
-    QTextEdit *exporting = new QTextEdit(this);
-    exporting->setWindowFlags(Qt::Window);
-    exporting->setAttribute(Qt::WA_DeleteOnClose, true);
-
-    exporting->setText(trainerTeam()->exportToTxt());
-    exporting->setReadOnly(true);
-
-    exporting->show();
-    exporting->setBackgroundRole(QPalette::Base);
-    exporting->resize(500,700);
-}
-
-void TeamBuilder::setTierList(const QStringList &tiers)
-{
-    m_trainerBody->setTierList(tiers);
+    connect(trainer, SIGNAL(teamChanged()), SLOT(markTeamUpdated()));
+    connect(trainer, SIGNAL(done()), SIGNAL(done()));
+    connect(trainer, SIGNAL(openBoxes()), SLOT(openBoxes()));
+    connect(trainer, SIGNAL(editPoke(int)), SLOT(editPoke(int)));
 }
 
 TeamBuilder::~TeamBuilder()
 {
     writeSettings(this);
+}
+
+QSize TeamBuilder::defaultSize() const {
+    return QSize(600,400);
+}
+
+QMenuBar *TeamBuilder::createMenuBar(MainEngine *w)
+{
+    QMenuBar *menuBar = new QMenuBar();
+    menuBar->setObjectName("TeamBuilder");
+    QMenu *fileMenu = menuBar->addMenu(tr("&File"));
+    fileMenu->addAction(tr("&New"),this,SLOT(newTeam()),tr("Ctrl+N", "New"));
+    fileMenu->addAction(tr("&Save all"),this,SLOT(saveAll()),tr("Ctrl+S", "Save all"));
+    fileMenu->addAction(tr("&Load all"),this,SLOT(loadAll()),tr("Ctrl+L", "Load all"));
+    fileMenu->addSeparator();
+    fileMenu->addAction(tr("&Quit"),qApp,SLOT(quit()),tr("Ctrl+Q", "Quit"));
+    QMenu *teamMenu = menuBar->addMenu(tr("&Team"));
+    if (currentWidget() && currentWidget() == this->teamMenu) {
+        teamMenu->addAction(tr("Choose pokemon"), this->teamMenu, SLOT(choosePokemon()), tr("Alt+E", "Choose Pokemon"));
+    }
+    teamMenu->addAction(tr("Trainer Menu"), this, SLOT(switchToTrainer()), tr("Ctrl+B", "Trainer Menu"));
+    teamMenu->addSeparator();
+    teamMenu->addAction(tr("&Add team"), this, SLOT(addTeam()), tr("Ctrl+A", "Add team"));
+    teamMenu->addAction(tr("&Load team"), this, SLOT(openTeam()), tr("Ctrl+Shift+L", "Load team"));
+    teamMenu->addAction(tr("&Save team"), this, SLOT(saveTeam()), tr("Ctrl+Shift+S", "Save team"));
+    teamMenu->addAction(tr("&Import team"), this, SLOT(importTeam()), tr("Ctrl+I", "Import team"));
+    teamMenu->addAction(tr("&Export team"), this, SLOT(exportTeam()), tr("Ctrl+E", "Export team"));
+
+    /* Loading mod menu */
+    QMenu *menuMods = menuBar->addMenu(tr("&Mods"));
+    QActionGroup *group = new QActionGroup(menuMods);
+
+    QString currentMod = PokemonInfoConfig::currentMod();
+    // No mod option.
+    QAction *noMod = menuMods->addAction(tr("&No mod"), this, SLOT(setNoMod()));
+    noMod->setCheckable(true);
+    noMod->setChecked(currentMod.length()==0);
+    group->addAction(noMod);
+
+    menuMods->addSeparator();
+
+    QStringList mods = PokemonInfoConfig::availableMods();
+
+    foreach(QString smod, mods) {
+        QAction *mod = menuMods->addAction(smod, this, SLOT(changeMod()));
+        mod->setProperty("name", smod);
+        mod->setCheckable(true);
+        mod->setChecked(currentMod == smod);
+        group->addAction(mod);
+    }
+
+    menuMods->addSeparator();
+    menuMods->addAction(tr("&Install new mod..."), this, SLOT(installMod()));
+
+    w->addThemeMenu(menuBar);
+    w->addStyleMenu(menuBar);
+
+    if (currentWidget()) {
+        currentWidget()->addMenus(menuBar);
+    }
+
+    return menuBar;
+}
+
+void TeamBuilder::saveAll()
+{
+    team().save();
+}
+
+void TeamBuilder::loadAll()
+{
+    switchToTrainer();
+    team().load();
+    markAllUpdated();
+    currentWidget()->updateAll();
+}
+
+void TeamBuilder::setNoMod()
+{
+    PokemonInfoConfig::changeMod(QString());
+
+    QSettings settings;
+    settings.setValue("Mods/CurrentMod", QString());
+
+    emit reloadDb();
+    emit reloadMenuBar();
+
+    markTeamUpdated();
+    currentWidget()->updateTeam();
+}
+
+void TeamBuilder::changeMod()
+{
+    QString mod = sender()->property("name").toString();
+    PokemonInfoConfig::changeMod(mod);
+
+    QSettings settings;
+    settings.setValue("Mods/CurrentMod", mod);
+
+    emit reloadDb();
+
+    markTeamUpdated();
+    currentWidget()->updateTeam();
+}
+
+static void recurseRemove(const QString &path) {
+    QDir d(path);
+
+    QStringList files = d.entryList(QDir::Files | QDir::Hidden | QDir::System);
+
+    foreach(QString file, files) {
+        d.remove(file);
+    }
+
+    QStringList dirs = d.entryList(QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot);
+
+    foreach(QString dir, dirs) {
+        recurseRemove(d.absoluteFilePath(dir));
+    }
+
+    d.rmdir(d.absolutePath());
+}
+
+void TeamBuilder::installMod()
+{
+    /* Todo: thread this, and print updated status ? */
+    QString archivePath = QFileDialog::getOpenFileName(this, tr("Install mod file"), QDesktopServices::storageLocation(QDesktopServices::HomeLocation), tr("archive (*.zip)"));
+
+    if (archivePath.isNull()) {
+        return;
+    }
+
+    QString modName = QFileInfo(archivePath).baseName();
+
+    /****************************/
+    /* Extracting the zip... :) */
+    /****************************/
+
+    int error = 0;
+    char buffer[4096];
+    int readsize = 0;
+
+    zip * archive = zip_open(archivePath.toStdString().c_str(), 0, &error);
+
+    if (!archive)
+    {
+        zip_error_to_str(buffer, 4096, error, errno);
+        QMessageBox::critical(this, tr("Impossible to open the archive"), tr("Pokemon Online failed to open the file %1 as an archive (%2).").arg(archivePath, buffer));
+        return;
+    }
+
+    zip_file *file = zip_fopen(archive, "mod.ini", 0);
+
+    if (!file)
+    {
+        QMessageBox::critical(this, tr("Incomplete archive"), tr("The file mod.ini couldn't be opened at the base of the archive (%1).").arg(zip_strerror(archive)));
+        zip_close(archive);
+        return;
+    }
+
+    QDir modDir(appDataPath("Mods", true));
+
+    //First remove the mod file if existing
+    if (modDir.exists(modName)) {
+        qDebug() << "Removing old mod with same name.";
+        recurseRemove(modDir.absoluteFilePath(modName));
+    }
+
+    modDir.mkdir(modName);
+    modDir.cd(modName);
+
+    QFile out(modDir.absoluteFilePath("mod.ini"));
+    out.open(QIODevice::WriteOnly);
+
+    do
+    {
+        out.write(buffer, readsize);
+
+        readsize = zip_fread(file, buffer, 4096);
+    } while (readsize > 0) ;
+
+    out.close();
+
+    zip_fclose(file), file = NULL;
+
+    /* Now reads all other files */
+    int numFiles = zip_get_num_entries(archive, 0);
+
+    qDebug() << "Number of files in the archive: " << numFiles;
+
+    for (int i = 0; i < numFiles; i++) {
+        QString name = zip_get_name(archive, i, 0);
+
+        qDebug() << "File " << i << ": " << name;
+
+        /* Mod.ini is already open */
+        if (name != "mod.ini") {
+            file = zip_fopen_index(archive, i, 0);
+
+            if (!file) {
+                qDebug() << "Opening failed for some reason";
+                //error
+                continue;
+            }
+
+            modDir.mkpath(QFileInfo(name).path());
+            QFile out(modDir.absoluteFilePath(name));
+            out.open(QIODevice::WriteOnly);
+
+            readsize = 0;
+
+            do
+            {
+                out.write(buffer, readsize);
+
+                readsize = zip_fread(file, buffer, 4096);
+            } while (readsize > 0) ;
+
+            out.close();
+
+            zip_fclose(file), file = NULL;
+        }
+    }
+
+    zip_close(archive);
+
+    //Done
+    emit reloadMenuBar();
+
+    /* If the **** user overwrote his current mod */
+    if (modName == PokemonInfoConfig::currentMod()) {
+        emit reloadDb();
+    }
+}
+
+void TeamBuilder::newTeam()
+{
+    switchToTrainer();
+    team() = TeamHolder();
+    markTeamUpdated();
+    currentWidget()->updateAll();
+}
+
+void TeamBuilder::addTeam()
+{
+    team().addTeam();
+
+    if (trainer) {
+        trainer->updateAll();
+    }
+
+    switchToTrainer();
+}
+
+void TeamBuilder::openTeam()
+{
+    loadTTeamDialog(team().team(), this, SLOT(updateCurrentTeamAndNotify()));
+}
+
+void TeamBuilder::updateCurrentTeamAndNotify()
+{
+    markTeamUpdated();
+    currentWidget()->updateTeam();
+}
+
+void TeamBuilder::saveTeam()
+{
+    saveTTeamDialog(team().team(), this, SLOT(onSaveTeam()));
+}
+
+void TeamBuilder::onSaveTeam()
+{
+    if (trainer) {
+        trainer->updateTeam();
+    }
+}
+
+void TeamBuilder::importTeam()
+{
+    switchToTrainer();
+    trainer->openImportDialog();
+}
+
+void TeamBuilder::exportTeam()
+{
+    QTextEdit *exporting = new QTextEdit(this);
+    exporting->setObjectName("exporting");
+    exporting->setWindowFlags(Qt::Window);
+    exporting->setAttribute(Qt::WA_DeleteOnClose, true);
+
+    exporting->setText(team().team().exportToTxt());
+    exporting->setReadOnly(true);
+
+    exporting->show();
+    exporting->resize(500,700);
+}
+
+void TeamBuilder::markAllUpdated()
+{
+    for (int i = 0; i < count(); i++) {
+        if (i != currentIndex()) {
+            widget(i)->setProperty("all-to-update", true);
+        }
+    }
+}
+
+void TeamBuilder::markTeamUpdated()
+{
+    for (int i = 0; i < count(); i++) {
+        if (i != currentIndex()) {
+            widget(i)->setProperty("team-to-update", true);
+        }
+    }
+}
+
+void TeamBuilder::openBoxes()
+{
+    if(!boxesMenu) {
+        addWidget(boxesMenu = new PokeBoxes(this, &team()));
+        connect(boxesMenu, SIGNAL(done()), SLOT(switchToTrainer()));
+    }
+    switchTo(boxesMenu);
+}
+
+void TeamBuilder::editPoke(int index)
+{
+    if (!teamMenu) {
+        addWidget(teamMenu = new TeamMenu(pokemonModel, &team(), index));
+        connect(teamMenu, SIGNAL(teamChanged()), SLOT(markTeamUpdated()));
+        connect(teamMenu, SIGNAL(switchToTrainer()), SLOT(switchToTrainer()));
+    }
+
+    switchTo(teamMenu);
+
+    teamMenu->switchToTab(index);
+}
+
+void TeamBuilder::switchToTrainer()
+{
+    switchTo(trainer);
+}
+
+TeamBuilderWidget *TeamBuilder::currentWidget()
+{
+    return (TeamBuilderWidget*)(QStackedWidget::currentWidget());
+}
+
+TeamBuilderWidget *TeamBuilder::widget(int i)
+{
+    return (TeamBuilderWidget*)(QStackedWidget::widget(i));
+}
+
+void TeamBuilder::switchTo(TeamBuilderWidget *w)
+{
+    if (w->property("all-to-update").toBool()) {
+        w->updateAll();
+        w->setProperty("all-to-update", false);
+        w->setProperty("team-to-update", false);
+    } else if (w->property("team-to-update").toBool()) {
+        w->updateTeam();
+        w->setProperty("team-to-update", false);
+    }
+    setCurrentWidget(w);
+
+    emit reloadMenuBar();
+}
+
+//TODO
+void TeamBuilder::setTierList(const QStringList &tiers)
+{
+    trainer->setTiers(tiers);
 }

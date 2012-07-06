@@ -1,25 +1,26 @@
 #include "teamsaver.h"
 #include "pokemonstructs.h"
 
-TeamSaver::TeamSaver(TrainerTeam *t)
+TeamSaver::TeamSaver(Team *t) :t(t)
 {
-    this->t = t;
 }
 
 void TeamSaver::fileNameReceived(const QString &name)
 {
-    QSettings s;
-    s.setValue("team_location", name);
     t->saveToFile(name);
+
+    QSettings s;
+    s.setValue("Teams/Folder", t->folder());
 
     deleteLater();
 }
 
 void TeamSaver::fileNameReceivedL(const QString &name)
 {
-    QSettings s;
-    s.setValue("team_location", name);
     t->loadFromFile(name);
+
+    QSettings s;
+    s.setValue("Teams/Folder", t->folder());
 
     deleteLater();
 }

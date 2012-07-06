@@ -1,9 +1,9 @@
 #include "password_wallet.h"
-
+#include "../Utilities/coreclasses.h"
 
 namespace {
     static quint32 MAGIC = 0xB0C3B455;
-    static quint16 VERSION = 0x0001;
+    static quint16 VERSION = 0x0002;
 }
 
 PasswordWallet::PasswordWallet() : 
@@ -18,7 +18,7 @@ void PasswordWallet::load()
     QFile f(dataPath);
     if (!f.open(QIODevice::ReadOnly))
         return;
-    QDataStream s(&f);
+    DataStream s(&f);
     // sanity checks
     quint32 magic;
     s >> magic;
@@ -43,7 +43,7 @@ void PasswordWallet::save()
     QFile f(dataPath);
     if (!f.open(QIODevice::WriteOnly))
         return;
-    QDataStream s(&f);
+    DataStream s(&f);
     // write magic byte
     s << MAGIC;
     s << VERSION;
@@ -56,7 +56,7 @@ void PasswordWallet::save()
 bool PasswordWallet::retrieveUserPassword(const QString& ip,
                                           const QString &serverName,
                                           const QString &trainerName,
-                                          const QString &salt, QString &pass,
+                                          const QByteArray &salt, QString &pass,
                                           QStringList &warnings)
 {
     for (QVector<UserPassRecord>::iterator i = userPass.begin(); i != userPass.end(); ++i) {
@@ -99,7 +99,7 @@ bool PasswordWallet::retrieveServerPassword(const QString& ip,
 void PasswordWallet::saveUserPassword(const QString& ip,
                                       const QString &serverName,
                                       const QString &trainerName,
-                                      const QString &salt, const QString &pass)
+                                      const QByteArray &salt, const QString &pass)
 {
     for (QVector<UserPassRecord>::iterator i = userPass.begin(); i != userPass.end(); ++i) {
         UserPassRecord& r = *i;
@@ -138,7 +138,7 @@ void PasswordWallet::saveServerPassword(const QString& ip,
     save();
 }
 
-QDataStream &operator<<(QDataStream &ds, const PasswordWallet::ServerPassRecord &r)
+DataStream &operator<<(DataStream &ds, const PasswordWallet::ServerPassRecord &r)
 {
     ds << r.ip;
     ds << r.server;
@@ -146,7 +146,7 @@ QDataStream &operator<<(QDataStream &ds, const PasswordWallet::ServerPassRecord 
     return ds;
 }
 
-QDataStream &operator>>(QDataStream &ds, PasswordWallet::ServerPassRecord &r)
+DataStream &operator>>(DataStream &ds, PasswordWallet::ServerPassRecord &r)
 {
     ds >> r.ip;
     ds >> r.server;
@@ -154,7 +154,7 @@ QDataStream &operator>>(QDataStream &ds, PasswordWallet::ServerPassRecord &r)
     return ds;
 }
 
-QDataStream &operator<<(QDataStream &ds, const PasswordWallet::UserPassRecord &r)
+DataStream &operator<<(DataStream &ds, const PasswordWallet::UserPassRecord &r)
 {
     ds << r.ip;
     ds << r.server;
@@ -164,7 +164,7 @@ QDataStream &operator<<(QDataStream &ds, const PasswordWallet::UserPassRecord &r
     return ds;
 }
 
-QDataStream &operator>>(QDataStream &ds, PasswordWallet::UserPassRecord &r)
+DataStream &operator>>(DataStream &ds, PasswordWallet::UserPassRecord &r)
 {
     ds >> r.ip;
     ds >> r.server;

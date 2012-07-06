@@ -13,84 +13,51 @@ Q_DECLARE_METATYPE(QList<int>)
 
 using namespace Move;
 typedef BattleCounterIndex BC;
-
-int MoveMechanics::num(const QString &name)
-{
-    if (!MoveEffect::nums.contains(name)) {
-        return 0;
-    } else {
-        return MoveEffect::nums[name];
-    }
-}
-
-MoveEffect::MoveEffect(int num, int gen, BattleSituation::BasicMoveInfo &data)
-{
-    /* Different steps: critical raise, number of times, ... */
-    data.critRaise = MoveInfo::CriticalRaise(num, gen);
-    data.repeatMin = MoveInfo::RepeatMin(num, gen);
-    data.repeatMax = MoveInfo::RepeatMax(num, gen);
-    data.priority = MoveInfo::SpeedPriority(num, gen);
-    data.flags = MoveInfo::Flags(num, gen);
-    data.power = MoveInfo::Power(num, gen);
-    data.accuracy = MoveInfo::Acc(num, gen);
-    data.type = MoveInfo::Type(num, gen);
-    data.category = MoveInfo::Category(num, gen);
-    data.rate = MoveInfo::EffectRate(num, gen);
-    //(*this)["StatEffect"] = MoveInfo::Effect(num, gen);
-    data.flinchRate = MoveInfo::FlinchRate(num, gen);
-    data.recoil = MoveInfo::Recoil(num, gen);
-    data.attack = num;
-    data.targets = MoveInfo::Target(num, gen);
-    data.healing = MoveInfo::Healing(num, gen);
-    data.classification = MoveInfo::Classification(num, gen);
-    data.status = MoveInfo::Status(num, gen);
-    data.statusKind = MoveInfo::StatusKind(num, gen);
-    data.minTurns = MoveInfo::MinTurns(num, gen);
-    data.maxTurns = MoveInfo::MaxTurns(num, gen);
-    data.statAffected = MoveInfo::StatAffected(num, gen);
-    data.boostOfStat = MoveInfo::BoostOfStat(num, gen);
-    data.rateOfStat = MoveInfo::RateOfStat(num, gen);
-    data.kingRock = MoveInfo::FlinchByKingRock(num, gen);
-}
+typedef BS::TurnMemory TM;
 
 /* There's gonna be tons of structures inheriting it,
     so let's do it fast */
 typedef MoveMechanics MM;
 typedef BattleSituation BS;
 
-void MoveEffect::setup(int num, int source, int target, BattleSituation &b)
+void MoveEffect::setup(int num, int source, int target, BattleBase &b)
 {
     /* first the basic info */
-    MoveEffect e(num, b.gen(), MM::tmove(b,source));
+    MM::initMove(num, b.gen(), MM::tmove(b,source));
 
-    /* then the hard info */
-    QStringList specialEffects = MoveInfo::SpecialEffect(num).split('|');
+    BS *_b = dynamic_cast<BS*>(&b);
 
-    foreach (QString specialEffectS, specialEffects) {
-        std::string s = specialEffectS.toStdString();
+    if (_b) {
+        BS &b = *_b;
+        /* then the hard info */
+        QStringList specialEffects = MoveInfo::SpecialEffect(num, b.gen()).split('|');
 
-        int specialEffect = atoi(s.c_str());
+        foreach (QString specialEffectS, specialEffects) {
+            std::string s = specialEffectS.toStdString();
 
-        /* if the effect is invalid or not yet implemented then no need to go further */
-        if (!mechanics.contains(specialEffect)) {
-            break;
-        }
+            int specialEffect = atoi(s.c_str());
 
-        MoveMechanics &m = mechanics[specialEffect];
-        QString &n = names[specialEffect];
+            /* if the effect is invalid or not yet implemented then no need to go further */
+            if (!mechanics.contains(specialEffect)) {
+                break;
+            }
 
-        QHash<QString, MoveMechanics::function>::iterator i;
+            MoveMechanics &m = mechanics[specialEffect];
+            QString &n = names[specialEffect];
 
-        size_t pos = s.find('-');
-        if (pos != std::string::npos) {
-            MM::turn(b,source)[n+"_Arg"] = specialEffectS.mid(pos+1);
-        }
+            QHash<QString, MoveMechanics::function>::iterator i;
 
-        for(i = m.functions.begin(); i != m.functions.end(); ++i) {
-            if (i.key() == "OnSetup") {
-                i.value()(source,target,b);
-            } else {
-                Mechanics::addFunction(MM::turn(b,source), i.key(), n, i.value());
+            size_t pos = s.find('-');
+            if (pos != std::string::npos) {
+                MM::turn(b,source)[n+"_Arg"] = specialEffectS.mid(pos+1);
+            }
+
+            for(i = m.functions.begin(); i != m.functions.end(); ++i) {
+                if (i.key() == "OnSetup") {
+                    i.value()(source,target,b);
+                } else {
+                    Mechanics::addFunction(MM::turn(b,source), i.key(), n, i.value());
+                }
             }
         }
     }
@@ -99,31 +66,37 @@ void MoveEffect::setup(int num, int source, int target, BattleSituation &b)
 
 /* Used by moves like Metronome that may use moves like U-Turn. Then AfterAttackSuccessful would be called twice, and that would
     not be nice because U-Turning twice :s*/
-void MoveEffect::unsetup(int num, int source, BattleSituation &b)
+void MoveEffect::unsetup(int num, int source, BattleBase &b)
 {
-    /* then the hard info */
-    QStringList specialEffects = MoveInfo::SpecialEffect(num).split('|');
+    BS *_b = dynamic_cast<BS*>(&b);
 
-    foreach (QString specialEffectS, specialEffects) {
-        std::string s = specialEffectS.toStdString();
+    if (_b) {
+        BS &b = *_b;
 
-        int specialEffect = atoi(s.c_str());
+        /* then the hard info */
+        QStringList specialEffects = MoveInfo::SpecialEffect(num, b.gen()).split('|');
 
-        /* if the effect is invalid or not yet implemented then no need to go further */
-        if (!mechanics.contains(specialEffect)) {
-            break;
-        }
+        foreach (QString specialEffectS, specialEffects) {
+            std::string s = specialEffectS.toStdString();
 
-        MoveMechanics &m = mechanics[specialEffect];
-        QString &n = names[specialEffect];
+            int specialEffect = atoi(s.c_str());
 
-        QHash<QString, MoveMechanics::function>::iterator i;
+            /* if the effect is invalid or not yet implemented then no need to go further */
+            if (!mechanics.contains(specialEffect)) {
+                break;
+            }
 
-        for(i = m.functions.begin(); i != m.functions.end(); ++i) {
-            if (i.key() == "OnSetup") {
-                ;
-            } else {
-                Mechanics::removeFunction(MM::turn(b,source), i.key(), n);
+            MoveMechanics &m = mechanics[specialEffect];
+            QString &n = names[specialEffect];
+
+            QHash<QString, MoveMechanics::function>::iterator i;
+
+            for(i = m.functions.begin(); i != m.functions.end(); ++i) {
+                if (i.key() == "OnSetup") {
+                    ;
+                } else {
+                    Mechanics::removeFunction(MM::turn(b,source), i.key(), n);
+                }
             }
         }
     }
@@ -133,7 +106,7 @@ void MoveEffect::unsetup(int num, int source, BattleSituation &b)
 
 /* List of events:
     *UponDamageInflicted -- turn: just after inflicting damage
-    *DetermineAttackFailure -- turn, poke: set turn()["Failed"] to true to make the attack fail
+    *DetermineAttackFailure -- turn, poke: set fturn(b,s).add(TM::Failed) to true to make the attack fail
     *DetermineGeneralAttackFailure -- battle: this is a battlefield effect, same as above
     *EndTurn -- poke: Called at the end of the turn
     *UponOffensiveDamageReceived -- turn: when the player received damage (not the substitute) from an attack
@@ -198,20 +171,6 @@ struct MMUTurn : public MM
     }
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 struct MMHiddenPower : public MM
 {
     MMHiddenPower() {
@@ -232,10 +191,6 @@ struct MMHiddenPower : public MM
     }
 };
 
-
-
-
-
 struct MMTrumpCard : public MM
 {
     MMTrumpCard() {
@@ -244,7 +199,7 @@ struct MMTrumpCard : public MM
 
     static void bcd(int s, int, BS &b)
     {
-        int n = b.PP(s,poke(b,s)["MoveSlot"].toInt());
+        int n = b.PP(s,fpoke(b,s).lastMoveSlot);
         int mult;
         switch(n) {
         case 0: mult = 200; break;
@@ -303,7 +258,7 @@ struct MMPerishSong : public MM
         }
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 2 ? makeBracket(4,0) : gen <= 4 ? makeBracket(8, 0) : makeBracket(20, 0) ;
     }
 
@@ -399,31 +354,25 @@ struct MMLeechSeed : public MM
         }
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 4) : makeBracket(8, 0) ;
     }
 
     static void uas(int s, int t, BS &b) {
         b.addEndTurnEffect(BS::PokeEffect, bracket(b.gen()), t, "LeechSeed", &et);
         poke(b,t)["SeedSource"] = s;
-        poke(b,t)["LeechSeedTurn"] = b.turn();
         b.sendMoveMessage(72, 1, s, Pokemon::Grass, t);
     }
 
     static void et(int s, int, BS &b) {
-        if (b.gen() <= 2 && poke(b,s).value("LeechSeedTurn").toInt() == b.turn())
-            return;
-
         if (b.koed(s) || b.hasWorkingAbility(s, Ability::MagicGuard))
             return;
         int s2 = poke(b,s)["SeedSource"].toInt();
         if (b.koed(s2))
             return;
 
-        /* In RBY and stadium 1, toxic count increases also leech seed count */
-        int numerator = b.poke(s).status() == Pokemon::Poisoned && b.poke(s).statusCount() > 0 && b.gen() == 1 ? 15-b.poke(s).statusCount() : 1;
-        int denumerator = b.gen() == 1 ? 16 : 8;
-        int damage = std::min(int(b.poke(s).lifePoints()), std::max(b.poke(s).totalLifePoints() * numerator / denumerator, 1));
+        int denumerator = b.gen().num == 1 ? 16 : 8;
+        int damage = std::min(int(b.poke(s).lifePoints()), std::max(b.poke(s).totalLifePoints() / denumerator, 1));
 
         b.sendMoveMessage(72, 2, s, Pokemon::Grass);
         b.inflictDamage(s, damage, s, false);
@@ -461,10 +410,10 @@ struct MMRoost : public MM
 
     static void daf (int s, int, BS &b) {
         if (b.poke(s).isFull())
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return makeBracket(40, 0);
     }
 
@@ -490,7 +439,7 @@ struct MMRest : public MM
     static void daf(int s, int, BS &b) {
         // Insomnia, Vital Spirit, Uproar
         if ( (b.gen() >= 3 && b.poke(s).status() == Pokemon::Asleep) || !b.canGetStatus(s, Pokemon::Asleep) || b.poke(s).isFull()) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -520,11 +469,11 @@ struct MMWish : public MM
 
     static void daf(int s, int, BS &b) {
         if (slot(b,s).contains("WishTurn") && slot(b,s)["WishTurn"].toInt() >= b.turn()) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(2, 0) : makeBracket(4, 0) ;
     }
 
@@ -559,13 +508,13 @@ struct MMIngrain : public MM
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 0) : makeBracket(7, 0) ;
     }
 
     static void daf(int s, int , BS &b) {
         if (poke(b,s)["Rooted"].toBool() == true) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -602,13 +551,13 @@ struct MMRoar : public MM
     }
 
     static bool testPhazing(int s, int t, BS &b, bool verbose) {
-        if (b.gen() == 1) {
-            turn(b,s)["Failed"] = true;
+        if (b.gen().num == 1) {
+            fturn(b,s).add(TM::Failed);
             return false;
         }
 
-        if (b.gen() == 2 && !b.hasMoved(t)) {
-            turn(b,s)["Failed"] = true;
+        if (b.gen().num == 2 && !b.hasMoved(t)) {
+            fturn(b,s).add(TM::Failed);
             return false;
         }
 
@@ -626,7 +575,7 @@ struct MMRoar : public MM
         } else{
             if (b.countBackUp(target) == 0) {
                 if (verbose)
-                    turn(b,s)["Failed"] = true;
+                    fturn(b,s).add(TM::Failed);
                 return false;
             }
         }
@@ -676,7 +625,7 @@ struct MMSpikes : public MM
 
     static void daf(int s, int, BS &b) {
         if (team(b,b.opponent(b.player(s))).value("Spikes").toInt() >= 1 + 2*(b.gen() >= 3)) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -717,7 +666,7 @@ struct MMStealthRock : public MM
     static void daf(int s, int, BS &b) {
         int t = b.opponent(b.player(s));
         if (team(b,t).value("StealthRock").toBool() == true) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -748,7 +697,7 @@ struct MMToxicSpikes : public MM
     static void daf(int s, int, BS &b) {
         int t = b.opponent(b.player(s));
         if (team(b,t).value("ToxicSpikes").toInt() >= 2) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -841,14 +790,14 @@ struct MMSubstitute : public MM
     }
 
     static void daf(int s, int, BS &b) {
-        if (poke(b,s).value("Substitute").toBool() == true) {
+        if (fpoke(b,s).substitute()) {
             b.fail(s, 128);
         }
     }
 
     static void uas(int s, int, BS &b) {
-        poke(b,s)["Substitute"] = true;
-        poke(b,s)["SubstituteLife"] = b.poke(s).totalLifePoints()/4;
+        fpoke(b,s).add(BS::BasicPokeInfo::Substitute);
+        fpoke(b,s).substituteLife = b.poke(s).totalLifePoints()/4;
         b.sendMoveMessage(128,4,s);
         b.notifySub(s,true);
         //	addFunction(poke(b,s), "BlockTurnEffects", "Substitute", &bte);
@@ -877,7 +826,7 @@ struct MMAttract : public MM
 
     static void daf(int s, int t, BS &b) {
         if (!b.isSeductionPossible(s,t) || b.linked(t, "Attract")){
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -899,7 +848,7 @@ struct MMAttract : public MM
     }
 
     static void pda(int s, int, BS &b) {
-        if (turn(b,s).value("HasPassedStatus").toBool())
+        if (fturn(b,s).contains(TM::HasPassedStatus))
             return;
         if (b.linked(s, "Attract")) {
             int seducer = b.linker(s, "Attract");
@@ -949,12 +898,12 @@ struct MMSwitcheroo : public MM
                 || ((ItemInfo::isDrive(b.poke(s).item()) || ItemInfo::isDrive(b.poke(t).item())) && (PokemonInfo::OriginalForme(b.poke(s).num()) == Pokemon::Genesect || PokemonInfo::OriginalForme(b.poke(t).num()) == Pokemon::Genesect)))
             /* Sticky Hold, MultiType, Giratina-O, Mail, Genesect Drives */
         {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
         /* Knock off */
-        if (b.battleMemory().value(QString("KnockedOff%1%2").arg(b.player(t)).arg(b.currentInternalId(t))).toBool()
-                || b.battleMemory().value(QString("KnockedOff%1%2").arg(b.player(t)).arg(b.currentInternalId(t))).toBool()) {
-            turn(b,s)["Failed"] = true;
+        if (b.gen() <= 4 && (b.battleMemory().value(QString("KnockedOff%1%2").arg(b.player(t)).arg(b.currentInternalId(t))).toBool()
+                || b.battleMemory().value(QString("KnockedOff%1%2").arg(b.player(t)).arg(b.currentInternalId(t))).toBool())) {
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -986,9 +935,9 @@ struct MMMetalBurst : public MM
     }
 
     static void daf (int s, int, BS &b) {
-        int dam = turn(b,s).value("DamageTakenByAttack").toInt();
+        int dam = fturn(b,s).damageTaken;
         if (dam == 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
         turn(b,s)["CounterDamage"] = dam * 3 / 2;
@@ -1008,10 +957,10 @@ struct MMTaunt : public MM
 
     static void daf(int s, int t, BS &b) {
         if (b.counters(t).hasCounter(BC::Taunt))
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 14) : makeBracket(12, 0) ;
     }
 
@@ -1028,7 +977,7 @@ struct MMTaunt : public MM
 
             if (b.gen() <= 3) {
                 b.counters(t).addCounter(BC::Taunt, 1);
-            } else if (b.gen() == 4) {
+            } else if (b.gen().num == 4) {
                 b.counters(t).addCounter(BC::Taunt, 2 + (b.randint(3)));
             } else {
                 b.counters(t).addCounter(BC::Taunt, 2);
@@ -1083,7 +1032,7 @@ struct MMGastroAcid : public MM
 
     static void daf(int s, int t, BS &b) {
         if (b.ability(t) == Ability::Multitype)
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int s, int t, BS &b) {
@@ -1138,9 +1087,9 @@ struct MMGrudge : public MM
     static void akbst(int s, int t, BS &b) {
         int trn = poke(b,s)["GrudgeTurn"].toInt();
 
-        if (trn == b.turn() || (trn+1 == b.turn() && !turn(b,s).value("HasMoved").toBool())) {
+        if (trn == b.turn() || (trn+1 == b.turn() && !fturn(b,s).contains(TM::HasMoved))) {
             if (!b.koed(t)) {
-                int slot = poke(b, t)["MoveSlot"].toInt();
+                int slot = fpoke(b, t).lastMoveSlot;
                 b.sendMoveMessage(54,0,s,Pokemon::Ghost,t,b.move(t,slot));
                 b.losePP(t, slot, 48);
             }
@@ -1198,7 +1147,7 @@ struct MMWeather : public MM
 
     static void daf(int s, int, BS &b) {
         if (b.weather == turn(b,s)["Weather_Arg"].toInt())
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int s, int, BS &b) {
@@ -1258,7 +1207,7 @@ struct MMHealingWish : public MM
 
     static void daf(int s, int, BS &b) {
         if (b.countBackUp(b.player(s)) == 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -1271,7 +1220,7 @@ struct MMHealingWish : public MM
         if (!turn(b,s).contains("HealingWishSuccess"))
             return;
         /* In gen 5, it triggers before entry hazards */
-        addFunction(turn(b,s), b.gen() == 4 ? "AfterSwitchIn" : "UponSwitchIn", "HealingWish", &asi);
+        addFunction(turn(b,s), b.gen().num == 4 ? "AfterSwitchIn" : "UponSwitchIn", "HealingWish", &asi);
 
         /* On gen 5 and further, the pokemon is switched at the end of the turn! */
         if (b.gen() <= 4)
@@ -1325,11 +1274,11 @@ struct MMHealBlock: public MM
     }
     static void daf(int s, int t, BS &b) {
         if (poke(b,t).value("HealBlockCount").toInt() > 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 16) : makeBracket(17, 0) ;
     }
 
@@ -1380,8 +1329,6 @@ struct MMJumpKick : public MM
         int damage;
         if (b.gen() >= 5)
             damage = b.poke(s).totalLifePoints()/2;
-        else if (b.gen() == 1)
-            damage = 1;
         else {
             int typemod;
             int typeadv[] = {b.getType(t, 1), b.getType(t, 2)};
@@ -1397,9 +1344,9 @@ struct MMJumpKick : public MM
             } else {
                 typemod = TypeInfo::Eff(type, typeadv[0]) * TypeInfo::Eff(type, typeadv[1]);
             }
-            turn(b,s)["TypeMod"] = typemod;
-            turn(b,s)["Stab"] = b.hasType(s, Type::Fighting) ? 3 : 2;
-            if (b.gen() == 4)
+            fturn(b,s).typeMod = typemod;
+            fturn(b,s).stab = b.hasType(s, Type::Fighting) ? 3 : 2;
+            if (b.gen().num == 4)
                 damage = std::min(b.calculateDamage(s,t)/2, b.poke(t).totalLifePoints()/2);
             else
                 damage = std::min(b.calculateDamage(s,t)/8, b.poke(t).totalLifePoints()/2);
@@ -1456,8 +1403,8 @@ struct MMIceBall : public MM
 
     static void ts(int s, int t, BS &b) {
         if (poke(b,s).contains("LastBallTurn") && poke(b,s)["LastBallTurn"].toInt() + 1 == b.turn() && poke(b,s)["IceBallCount"].toInt() > 0) {
-            turn(b,s)["NoChoice"] = true;
-            MoveEffect::setup(poke(b,s)["LastSpecialMoveUsed"].toInt(),s,t,b);
+            fturn(b,s).add(TM::NoChoice);
+            MoveEffect::setup(fpoke(b,s).lastMoveUsed,s,t,b);
         }
     }
 };
@@ -1487,7 +1434,7 @@ struct MMImprison : public MM
         }
 
         if (!success) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -1545,11 +1492,11 @@ struct MMMagnetRise : public MM
 
     static void daf(int s, int, BS &b) {
         if (b.hasWorkingAbility(s,Ability::Levitate) || poke(b,s).value("Rooted").toBool()) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 15) : makeBracket(15, 0) ;
     }
 
@@ -1593,18 +1540,18 @@ struct MMLastResort : public MM
     static void daf(int s, int, BS &b) {
         if (b.move(s, 1) == 0) {
             /* The user only has 1 move */
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
         bool succ = true;
-        int slot = poke(b,s)["MoveSlot"].toInt();
+        int slot = fpoke(b,s).lastMoveSlot;
         for (int i = 0; i < 4; i++) {
             if (i != slot && b.move(s,i) != 0 && !poke(b,s).value(QString("Move%1Used").arg(i)).toBool()) {
                 succ= false;
             }
         }
         if (!succ) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 };
@@ -1617,22 +1564,22 @@ struct MMTeamBarrier : public MM
     }
 
     static void daf(int s, int, BS &b) {
-        if (b.gen() == 1) { MMTeamBarrier::daf1(s,s,b); return; }
+        if (b.gen().num == 1) { MMTeamBarrier::daf1(s,s,b); return; }
 
         int cat = turn(b,s)["TeamBarrier_Arg"].toInt();
         int source = b.player(s);
 
         if (team(b,source).value("Barrier" + QString::number(cat) + "Count").toInt() > 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 2 ? makeBracket(7, 0) : gen <= 4 ? makeBracket(1, 0) : makeBracket(21, 0) ;
     }
 
     static void uas(int s, int, BS &b) {
-        if (b.gen() == 1) { MMTeamBarrier::uas1(s,s,b); return; }
+        if (b.gen().num == 1) { MMTeamBarrier::uas1(s,s,b); return; }
 
         int source = b.player(s);
 
@@ -1666,7 +1613,7 @@ struct MMTeamBarrier : public MM
     static void daf1(int s, int, BS &b) {
         int cat = turn(b,s)["TeamBarrier_Arg"].toInt();
         if (poke(b,s).value("Barrier" + QString::number(cat) + "Count").toInt() > 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -1700,7 +1647,7 @@ struct MMLuckyChant : public MM
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(1, 5) : makeBracket(21, 5) ;
     }
 
@@ -1894,13 +1841,13 @@ struct MMMeFirst : public MM
 
     static void daf(int s, int t, BS &b) {
         /* if has moved or is using a multi-turn move */
-        if (b.koed(t) || turn(b,t).value("HasMoved").toBool() || turn(b,t).value("NoChoice").toBool()) {
-            turn(b,s)["Failed"] = true;
+        if (b.koed(t) || fturn(b,t).contains(TM::HasMoved) || fturn(b,t).contains(TM::NoChoice)) {
+            fturn(b,s).add(TM::Failed);
             return;
         }
         int num = move(b,t);
         if (MoveInfo::Power(num, b.gen()) == 0 || num == Move::MeFirst) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
         turn(b,s)["MeFirstAttack"] = num;
@@ -1936,21 +1883,21 @@ struct MMMimic : public MM
 
     static void daf(int s, int t, BS &b) {
         /* Mimic doesn't fail in Gen 1 */
-        if (b.gen() == 1) {
+        if (b.gen().num == 1) {
             return;
         }
         if (!poke(b,t).contains("LastMoveUsedTurn")) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
         int tu = poke(b,t)["LastMoveUsedTurn"].toInt();
-        if (tu + 1 < b.turn() || (tu + 1 == b.turn() && turn(b,t).value("HasMoved").toBool())) {
-            turn(b,s)["Failed"] = true;
+        if (tu + 1 < b.turn() || (tu + 1 == b.turn() && fturn(b,t).contains(TM::HasMoved))) {
+            fturn(b,s).add(TM::Failed);
             return;
         }
         int move = poke(b,t)["LastMoveUsed"].toInt();
         if (b.hasMove(s,move) || FM.contains(move)) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
     }
@@ -1958,13 +1905,13 @@ struct MMMimic : public MM
     static void uas(int s, int t, BS &b) {
         int move = poke(b,t)["LastMoveUsed"].toInt();
         /* Mimic copies a random move in Gen 1 */
-        if (b.gen() == 1) {
+        if (b.gen().num == 1) {
             move = 0;
             while (move == 0) {
                 move = b.move(t, b.randint(4));
             }
         }
-        int slot = poke(b,s)["MoveSlot"].toInt();
+        int slot = fpoke(b,s).lastMoveSlot;
         b.changeTempMove(s, slot, move);
         b.sendMoveMessage(81,0,s,type(b,s),t,move);
     }
@@ -2005,7 +1952,7 @@ struct MMMirrorMove : public MM
 
     static void daf(int s, int , BS &b) {
         if(!poke(b,s).contains("MirrorMoveMemory")) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -2030,14 +1977,14 @@ struct MMMist : public MM
         functions["DetermineAttackFailure"]=  &daf;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 2 ? makeBracket(7, 3) : gen <= 4 ? makeBracket(1, 2) : makeBracket(21, 3) ;
     }
 
     static void daf(int s, int, BS &b) {
         int count = team(b,b.player(s))["MistCount"].toInt();
         if (count > 0)
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int s, int, BS &b) {
@@ -2103,7 +2050,7 @@ struct MMNightMare : public MM
         functions["OnFoeOnAttack"] = &uas;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 6) : makeBracket(9, 1) ;
     }
 
@@ -2178,7 +2125,7 @@ struct MMPsychoShift : public MM
 
     static void daf(int s, int t, BS &b) {
         if (b.poke(s).status() == Pokemon::Fine || b.poke(t).status() != Pokemon::Fine || !b.canGetStatus(t, b.poke(s).status()))
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int s, int t, BS &b) {
@@ -2230,6 +2177,7 @@ struct MMRazorWind : public MM
                 poke(b,s)["ReleaseTurn"] = b.turn() + 1;
                 turn(b,s)["TellPlayers"] = false;
                 tmove(b, s).power = 0;
+                tmove(b, s).status = Pokemon::Fine;
                 tmove(b, s).targets = Move::User;
                 addFunction(poke(b,s), "TurnSettings", "RazorWind", &ts);
             }
@@ -2238,7 +2186,7 @@ struct MMRazorWind : public MM
 
     static void ts(int s, int, BS &b) {
         removeFunction(poke(b,s), "TurnSettings", "RazorWind");
-        turn(b,s)["NoChoice"] = true;
+        fturn(b,s).add(TM::NoChoice);
         int mv = poke(b,s)["ChargingMove"].toInt();
         MoveEffect::setup(mv,s,s,b);
         if (mv == SolarBeam && b.weather != BS::NormalWeather && b.weather != BS::Sunny && b.isWeatherWorking(b.weather)) {
@@ -2286,7 +2234,7 @@ struct MMRage : public MM
     }
 
     static void ms(int s, int, BS &b) {
-        if (b.gen() == 2) {
+        if (b.gen().num == 2) {
             tmove(b,s).power *= 1 + poke(b,s).value("RagePower").toInt();
         }
     }
@@ -2302,7 +2250,7 @@ struct MMRage : public MM
         poke(b,s).remove("RageBuilt");
 
         // In Gen 1 we are locked into Rage
-        if (b.gen() == 1) {
+        if (b.gen().num == 1) {
             addFunction(poke(b,s), "TurnSettings", "Rage", &ts);
             poke(b,s)["RageMissed"] = false;
         }
@@ -2324,26 +2272,25 @@ struct MMRage : public MM
                 }
             }
         }
-
     }
 
     static void ts(int s, int, BS &b) {
-        turn(b,s)["NoChoice"] = true;
+        fturn(b,s).add(TM::NoChoice);
         MoveEffect::setup(Move::Rage,s,s,b);
     }
 
     static void daf(int s, int, BS &b) {
-        if (b.gen() == 1 && poke(b,s)["RageMissed"].toBool()) {
+        if (b.gen().num == 1 && poke(b,s)["RageMissed"].toBool()) {
             if (b.coinflip(1,256)) {
                 tmove(b, s).accuracy = 0;
             } else {
-                turn(b,s)["Failed"] = true;
+                fturn(b,s).add(TM::Failed);
             }
         }
     }
 
     static void asf(int s, int, BS &b) {
-       if (b.gen() == 1) {
+       if (b.gen().num == 1) {
            poke(b,s)["RageMissed"] = true;
        }
     }
@@ -2357,14 +2304,14 @@ struct MMSafeGuard : public MM
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 2 ? makeBracket(7, 2) : gen <= 4 ? makeBracket(1, 3) : makeBracket(21, 2);
     }
 
     static void daf(int s, int, BS &b) {
         int source = b.player(s);
         if (team(b,source).value("SafeGuardCount").toInt() > 0)
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int s, int, BS &b) {
@@ -2400,14 +2347,14 @@ struct MMSketch : public MM
         int move = poke(b,t)["LastMoveUsed"].toInt();
         /* Struggle, chatter */
         if (b.koed(t) || move == Struggle || move == Chatter || move == Sketch || move == 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
     static void uas(int s, int t, BS &b) {
         int mv = poke(b,t)["LastMoveUsed"].toInt();
         b.sendMoveMessage(111,0,s,type(b,s),t,mv);
-        int slot = poke(b,s)["MoveSlot"].toInt();
+        int slot = fpoke(b,s).lastMoveSlot;
         b.changeDefMove(s, slot, mv);
 
     }
@@ -2426,7 +2373,7 @@ struct MMSleepingUser : public MM
 
     static void daf(int s, int, BS &b) {
         if (b.poke(s).status() != Pokemon::Asleep) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 };
@@ -2466,7 +2413,7 @@ struct MMSleepTalk : public MM
         }
 
         if (mp.size() == 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         } else {
             turn(b,s)["SleepTalkedMove"] = b.move(s, mp[b.randint(mp.size())]);
         }
@@ -2565,28 +2512,28 @@ struct MMSpite : public MM
 
     static void daf (int s, int t, BS &b) {
         if (!poke(b,t).contains("LastMoveUsedTurn")) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
         int tu = poke(b,t)["LastMoveUsedTurn"].toInt();
-        if (tu + 1 < b.turn() || (tu + 1 == b.turn() && turn(b,t).value("HasMoved").toBool())) {
-            turn(b,s)["Failed"] = true;
+        if (tu + 1 < b.turn() || (tu + 1 == b.turn() && fturn(b,t).contains(TM::HasMoved))) {
+            fturn(b,s).add(TM::Failed);
             return;
         }
-        int slot = poke(b,t)["MoveSlot"].toInt();
+        int slot = fpoke(b,s).lastMoveSlot;
         if (b.PP(t,slot) == 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
     }
     static void uas(int s, int t, BS &b)
     {
-        int slot = poke(b,t)["MoveSlot"].toInt();
+        int slot = fpoke(b,s).lastMoveSlot;
         if (b.gen() >= 4)
             b.losePP(t, slot, 4);
-        else if (b.gen() == 3)
+        else if (b.gen().num == 3)
             b.losePP(t, slot, 2 + b.randint(4) );
-        else if (b.gen() == 2)
+        else if (b.gen().num == 2)
             b.losePP(t, slot, 1 + b.randint(5) );
 
         b.sendMoveMessage(123,0,s,Pokemon::Ghost,t,b.move(t,slot));
@@ -2624,8 +2571,8 @@ struct MMSuckerPunch : public MM
     }
 
     static void daf(int s, int t, BS &b) {
-        if (turn(b,t).value("HasMoved").toBool() || tmove(b, t).power == 0) {
-            turn(b,s)["Failed"] = true;
+        if (fturn(b,t).contains(TM::HasMoved) || tmove(b, t).power == 0) {
+            fturn(b,s).add(TM::Failed);
         }
     }
 };
@@ -2636,13 +2583,13 @@ struct MMTailWind : public MM {
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(1, 4) : makeBracket(21, 4) ;
     }
 
     static void daf(int s, int , BS &b) {
         if (team(b,b.player(s)).contains("TailWindCount"))
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int s, int, BS &b){
@@ -2670,7 +2617,7 @@ struct MMTorment : public MM {
 
     static void daf(int s, int t, BS &b) {
         if (poke(b,t).value("Tormented").toBool())
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas (int s, int t, BS &b) {
@@ -2685,7 +2632,7 @@ struct MMTorment : public MM {
     }
 
     static void msp(int s, int, BS &b) {
-        if (!poke(b,s).contains("Tormented") || poke(b,s)["LastMoveUsedTurn"].toInt() != b.turn() - 1)
+        if (!poke(b,s).contains("Tormented"))
             return;
         for (int i = 0; i < 4; i++) {
             if (b.move(s,i) == poke(b,s)["LastMoveUsed"].toInt()) {
@@ -2700,7 +2647,7 @@ struct MMTrickRoom : public MM {
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(9, 0) : makeBracket(23, 0) ;
     }
 
@@ -2762,7 +2709,7 @@ struct MMWorrySeed : public MM {
     static void daf(int s, int t, BS &b) {
         /* Truant & multi-type */
         if (b.ability(t) == Ability::Truant || b.ability(t) == Ability::Multitype) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -2784,7 +2731,7 @@ struct MMYawn : public MM {
         int opp = b.player(t);
 
         if (b.poke(t).status() != Pokemon::Fine || team(b,opp).value("SafeGuardCount").toInt() > 0 || poke(b,t).value("YawnCount").toInt() > 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
         if (b.hasWorkingAbility(t, Ability::Insomnia) || b.hasWorkingAbility(t, Ability::VitalSpirit)) {
@@ -2792,11 +2739,11 @@ struct MMYawn : public MM {
         }
         if (b.sleepClause() && b.currentForcedSleepPoke[b.player(t)] != -1) {
             b.notifyClause(ChallengeInfo::SleepClause);
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 18) : makeBracket(19, 0) ;
     }
 
@@ -2835,7 +2782,7 @@ struct MMCaptivate : public MM {
 
     static void daf(int s, int t, BS &b) {
         if (!b.isSeductionPossible(s,t)) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 };
@@ -2851,9 +2798,9 @@ struct MMNaturePower : public MM
         removeFunction(turn(b,s), "UponAttackSuccessful", "NaturePower");
 
         int move;
-        if (b.gen() == 3) {
+        if (b.gen().num == 3) {
             move = Swift;
-        } else if (b.gen() == 4) {
+        } else if (b.gen().num == 4) {
             move = TriAttack;
         } else {
             move = Earthquake;
@@ -2874,7 +2821,7 @@ struct MMRolePlay : public MM {
     static void daf(int s, int t, BS &b) {
         /* Wonder Guard & multi-type */
         if (b.ability(t) == Ability::WonderGuard || b.ability(t) == Ability::Multitype || b.ability(t) == Ability::Illusion) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -2895,7 +2842,7 @@ struct MMSkillSwap : public MM {
         /* Wonder Guard & multi-type */
         if (b.ability(t) == Ability::Multitype || b.ability(t) == Ability::WonderGuard || b.ability(s) == Ability::Multitype
                 || b.ability(s) == Ability::WonderGuard || b.ability(s) == Ability::Illusion || b.ability(t) == Ability::Illusion) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -2923,9 +2870,16 @@ struct MMSecretPower : public MM {
     }
 
     static void ms(int s, int, BS &b) {
-        tmove(b,s).classification = Move::OffensiveStatusInducingMove;
-        tmove(b,s).status = Pokemon::Paralysed;
-        tmove(b,s).rate = 30;
+        if (b.gen() >= 5) {
+            tmove(b,s).classification = Move::OffensiveStatChangingMove;
+            tmove(b,s).rateOfStat = 30 << 16;
+            tmove(b,s).statAffected = Accuracy << 16;
+            tmove(b,s).boostOfStat = uchar(-1) << 16;
+        } else {
+            tmove(b,s).classification = Move::OffensiveStatusInducingMove;
+            tmove(b,s).status = Pokemon::Paralysed;
+            tmove(b,s).rate = 30;
+        }
     }
 };
 
@@ -2937,7 +2891,7 @@ struct MMOutrage : public MM
         functions["MoveSettings"] = &ms;
     }
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return makeBracket(6, 11);
     }
 
@@ -2949,13 +2903,13 @@ struct MMOutrage : public MM
             addFunction(poke(b,s), "TurnSettings", "Outrage", &ts);
             addFunction(poke(b,s), "MoveSettings", "Outrage", &ms);
 
-            if (b.gen() <= 4 && b.gen() >= 3) {
+            if (b.gen() <= 4) {
                 b.addEndTurnEffect(BS::PokeEffect, bracket(b.gen()), s, "Outrage", &aas);
             }
 
             poke(b,s)["OutrageMove"] = move(b,s);
         }
-        /* In gen 5, even a miss causes outrage to stop */
+        /* In gen 5, even a miss causes outrage to stop, so we update the outrage count only after the attack is successful */
         if (b.gen() >= 5)
             poke(b,s)["LastOutrage"] = b.turn();
     }
@@ -2968,16 +2922,16 @@ struct MMOutrage : public MM
             poke(b,s).remove("OutrageMove");
             poke(b,s).remove("LastOutrage");
             b.sendMoveMessage(93,0,s,type(b,s));
-            b.inflictConfused(s, s, true);
+            b.inflictConfused(s, s, b.gen() >= 3);
         }
     }
 
     static void ts(int s, int, BS &b) {
         if (poke(b,s).value("OutrageUntil").toInt() >= b.turn() && poke(b,s)["LastOutrage"].toInt() == b.turn()-1) {
-            turn(b,s)["NoChoice"] = true;
+            fturn(b,s).add(TM::NoChoice);
             MoveEffect::setup(poke(b,s)["OutrageMove"].toInt(),s,s,b);
 
-            if (b.gen() >=5) {
+            if (b.gen() >= 5) {
                 addFunction(turn(b, s), "AfterAttackSuccessful", "Outrage", &aas);
                 addFunction(turn(b, s), "AttackSomehowFailed", "Outrage", &aas);
             }
@@ -2996,7 +2950,7 @@ struct MMUproar : public MM {
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int gen) {
+    static ::bracket bracket(Pokemon::gen gen) {
         return gen <= 4 ? makeBracket(6, 11) : makeBracket(26, 0) ;
     }
 
@@ -3024,7 +2978,7 @@ struct MMUproar : public MM {
 
 
     static void ts(int s, int, BS &b) {
-        turn(b,s)["NoChoice"] = true;
+        fturn(b,s).add(TM::NoChoice);
         turn(b,s)["UproarBefore"] = true;
         MoveEffect::setup(poke(b,s)["UproarMove"].toInt(),s,s,b);
     }
@@ -3061,7 +3015,7 @@ struct MMStockPile : public MM
 
     static void daf(int s, int, BS &b) {
         if (poke(b,s).value("StockPileCount").toInt() >= 3) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3089,7 +3043,7 @@ struct MMSwagger : public MM {
 
     static void daf(int s, int t, BS &b) {
         if (b.gen() <= 2 && (b.getStat(t, Attack) == 999 || b.hasMaximalStatMod(t, Attack))) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 };
@@ -3103,7 +3057,7 @@ struct MMSwallow: public MM
 
     static void daf(int s, int, BS &b) {
         if (poke(b,s).value("StockPileCount").toInt() == 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3134,7 +3088,7 @@ struct MMSpitUp : public MM
 
     static void daf(int s, int, BS &b) {
         if (poke(b,s).value("StockPileCount").toInt() == 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3164,7 +3118,7 @@ struct MMNaturalGift :  public MM
 
     static void daf(int s, int, BS &b) {
         if (!turn(b,s).value("NaturalGiftOk").toBool()) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3191,7 +3145,7 @@ struct MMRecycle : public MM {
 
     static void daf (int s, int, BS &b) {
         if (b.poke(s).itemUsed() == 0 || b.poke(s).item() != 0) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3210,14 +3164,8 @@ struct MMTransform : public MM {
     }
 
     static void daf(int s, int t, BS &b) {
-        if (poke(b,t).contains("Transformed") || (b.hasWorkingAbility(t, Ability::Illusion) && poke(b,t).contains("IllusionTarget")))
-            turn(b,s)["Failed"] = true;
-
-        Pokemon::uniqueId num = b.pokenum(t);
-
-        /* In Pokemon Stadium Ditto can't transform into an opposing Ditto */
-        if (b.gen() == 1 && num.toPokeRef() == Pokemon::Ditto) {
-            turn(b,s)["Failed"] = true;
+        if ( fpoke(b,t).flags & BS::BasicPokeInfo::Transformed || (b.hasWorkingAbility(t, Ability::Illusion) && poke(b,t).contains("IllusionTarget"))) {
+            fturn(b,s).add(TM::Failed);
             return;
         }
     }
@@ -3268,7 +3216,7 @@ struct MMTransform : public MM {
             b.acquireAbility(s, b.ability(t));
         }
 
-        poke(b,s)["Transformed"] = true;
+        fpoke(b,s).flags &= BS::BasicPokeInfo::Transformed;
     }
 };
 
@@ -3281,7 +3229,7 @@ struct MMPayback : public MM
     static void bcd(int s, int t, BS &b) {
         //Attack / Switch --> power *= 2
         //In gen 5, switch doesn't increase the power
-        if ( (b.gen() <= 4 && b.hasMoved(t)) || (b.gen() >= 5 && turn(b,t).value("HasMoved").toBool())) {
+        if ( (b.gen() <= 4 && b.hasMoved(t)) || (b.gen() >= 5 && fturn(b,t).contains(TM::HasMoved))) {
             tmove(b, s).power = tmove(b, s).power * 2;
         }
     }
@@ -3304,7 +3252,7 @@ struct MMAcupressure : public MM
                 return;
             }
         }
-        turn(b,s)["Failed"] = true;
+        fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int , int t, BS &b) {
@@ -3357,7 +3305,7 @@ struct MMMagicRoom : public MM {
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return makeBracket(25, 0) ;
     }
 
@@ -3392,7 +3340,7 @@ struct MMSoak : public MM {
 
     static void daf(int s, int t, BS &b) {
         if (fpoke(b, t).type1 == Pokemon::Water && fpoke(b, t).type2 == Pokemon::Curse)
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int, int t, BS &b) {
@@ -3410,7 +3358,7 @@ struct MMAssembleCrew : public MM {
 
     static void daf(int s, int t, BS &b) {
         if (b.ability(t) == Ability::Multitype || b.ability(t) == Ability::Truant) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3480,7 +3428,7 @@ struct MMGiftPass : public MM {
                 && !ItemInfo::isMail(b.poke(s).item())) {
             //ok
         } else {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3500,7 +3448,7 @@ struct MMRefresh : public MM {
 
     static void daf(int s, int, BS &b) {
         if (b.poke(s).status() == Pokemon::Fine) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3518,7 +3466,7 @@ struct MMMemento : public MM {
 
     static void daf(int s, int t, BS &b) {
         if (b.hasMinimalStatMod(t, Attack) && b.hasMinimalStatMod(t, SpAttack)) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3575,7 +3523,7 @@ struct MMWonderRoom : public MM {
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return makeBracket(24, 0) ;
     }
 
@@ -3635,13 +3583,13 @@ struct MMTelekinesis : public MM
         functions["UponAttackSuccessful"] = &uas;
     }
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return makeBracket(16, 0) ;
     }
 
     static void daf(int s, int t, BS &b) {
         if (poke(b,t).contains("LevitatedCount")) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
         }
     }
 
@@ -3675,7 +3623,7 @@ struct MMYouFirst : public MM
 
     static void daf(int s, int t, BS &b) {
         if (b.hasMoved(t))
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
     }
 
     static void uas(int, int t, BS &b) {
@@ -3747,7 +3695,7 @@ struct MMFireOath : public MM
 
     static void uas(int s, int t, BS &b);
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return makeBracket(5, 0) ;
     }
 
@@ -3818,7 +3766,7 @@ struct MMGrassOath : public MM
 
     static void uas(int s, int t, BS &b);
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return  makeBracket(21, 6) ;
     }
 
@@ -3878,7 +3826,7 @@ struct MMWaterOath : public MM
         /* Otherwise it's just the standard oath... */
     }
 
-    static ::bracket bracket(int) {
+    static ::bracket bracket(Pokemon::gen) {
         return makeBracket(21, 6) ;
     }
 
@@ -4083,7 +4031,7 @@ struct MMSynchroNoise : public MM
         if (b.hasType(t, b.getType(s, 1)) || (b.getType(s, 2) != Pokemon::Curse && b.hasType(t, b.getType(s, 2)))) {
 
         } else {
-            turn(b,s)["TypeMod"] = 0;
+            fturn(b,s).typeMod = 0;
         }
     }
 };
@@ -4140,11 +4088,11 @@ struct MMSideChange : public MM
 
     static void daf(int s, int , BS &b) {
         if (!b.multiples()) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
         if (b.slotNum(s) != 0 && b.slotNum(s) != b.numberPerSide()-1) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
 
@@ -4157,7 +4105,7 @@ struct MMSideChange : public MM
         }
 
         if (b.koed(t)) {
-            turn(b,s)["Failed"] = true;
+            fturn(b,s).add(TM::Failed);
             return;
         }
 
@@ -4180,50 +4128,6 @@ struct MMGrowth : public MM
     static void uas(int s, int, BS &b) {
         if (b.gen() >= 5 && b.isWeatherWorking(BS::Sunny))
             tmove(b,s).boostOfStat *= 2;
-    }
-};
-
-struct MMTriAttack : public MM
-{
-    MMTriAttack() {
-        functions["OnFoeOnAttack"] = &uas;
-    }
-
-    static void uas(int s, int t, BS &b) {
-        if (b.hasWorkingAbility(t, Ability::ShieldDust))
-            return;
-        // Do not apply extra effects with Sheer Force
-        if (b.hasWorkingAbility(s, Ability::Encourage))
-            return;
-        // In Gen 1 Tri Attack has no secondary effects
-        if (b.gen() == 1)
-            return;
-
-        bool boost = b.hasWorkingAbility(s, Ability::SereneGrace) ||  team(b, b.player(t)).value("RainbowCount").toInt();
-
-        if (!b.coinflip(unsigned(1+boost), 5))
-            return;
-
-        if (b.poke(t).status() == Pokemon::Koed)
-            return;
-
-        int status;
-        switch (b.randint(3)) {
-        case 0:
-            status = Pokemon::Paralysed;
-            break;
-        case 1:
-            status = Pokemon::Burnt;
-            break;
-        case 2:
-        default:
-            status = Pokemon::Frozen;
-            break;
-        }
-
-        if (b.canGetStatus(t, status) || b.gen() <= 2) {
-            b.inflictStatus(t, status, s);
-        }
     }
 };
 
@@ -4277,7 +4181,7 @@ struct MMWillOWisp : public MM
 
 /* List of events:
     *UponDamageInflicted -- turn: just after inflicting damage
-    *DetermineAttackFailure -- turn, poke: set turn()["Failed"] to true to make the attack fail
+    *DetermineAttackFailure -- turn, poke: set fturn(b,s).add(TM::Failed) to true to make the attack fail
     *DetermineGeneralAttackFailure -- battle: this is a battlefield effect, same as above
     *EndTurn -- poke, battle: Called at the end of the turn
     *UponOffensiveDamageReceived -- turn: when the player received damage (not the substitute) from an attack
@@ -4453,7 +4357,7 @@ void MoveEffect::init()
     REGISTER_MOVE(189, FireBurst);
     REGISTER_MOVE(190, SideChange);
     REGISTER_MOVE(191, Growth);
-    REGISTER_MOVE(192, TriAttack);
+    //REGISTER_MOVE(192, TriAttack);
     REGISTER_MOVE(193, CrossFlame);
     REGISTER_MOVE(194, CrossThunder);
     REGISTER_MOVE(195, WillOWisp);

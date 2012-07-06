@@ -1,4 +1,4 @@
-import QtQuick 1.0
+import QtQuick 1.1
 import "../" 1.0
 
 Move {
@@ -59,7 +59,7 @@ Move {
             console.log(i + ": " + extras[i]);
         }
 
-        if ((extras.currentHit || 0) == 0) {
+        if ((extras.currentHit || 0) === 0) {
             finished();
         } else {
             animation.running = true;

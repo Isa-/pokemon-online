@@ -2,29 +2,7 @@
 #define NETWORKSTRUCTS_H
 
 #include "pokemonstructs.h"
-
-/* Only the infos needed by the server */
-class TeamInfo
-{
-public:
-    PokePersonal m_pokes[6];
-    PokePersonal &pokemon(int num);
-    const PokePersonal &pokemon(int num) const;
-
-    QString name, info, win, lose, defaultTier;
-    quint16 avatar;
-    quint8 gen;
-};
-
-QDataStream & operator << (QDataStream & out,const TeamInfo & team);
-QDataStream & operator >> (QDataStream & in,TeamInfo & team);
-
-/* Only infos needed by other players */
-class BasicInfo
-{
-public:
-    QString name, info;
-};
+#include "../Utilities/coreclasses.h"
 
 struct UserInfo
 {
@@ -55,72 +33,69 @@ struct UserInfo
     bool tempBanned() const { return flags & TempBanned;}
 };
 
-inline QDataStream & operator << (QDataStream &d, const UserInfo &ui) {
+inline DataStream & operator << (DataStream &d, const UserInfo &ui) {
     d << ui.flags << ui.auth << ui.ip << ui.name << ui.date;
     return d;
 }
 
-inline QDataStream & operator >> (QDataStream &d, UserInfo &ui) {
+inline DataStream & operator >> (DataStream &d, UserInfo &ui) {
     d >> ui.flags >> ui.auth >> ui.ip >> ui.name >> ui.date;
     return d;
 }
 
-QDataStream & operator << (QDataStream & out,const BasicInfo & team);
-QDataStream & operator >> (QDataStream & in,BasicInfo & team);
+namespace PlayerFlags {
+    enum {
+        SupportsZipCompression,
+        LadderEnabled,
+        IdsWithMessage,
+        Idle
+    };
+    enum {
+        NoReconnectData,
+        WrongHash,
+        NoHistory,
+        IPMismatch
+    };
+}
 
 /* Struct representing a player's data */
 class PlayerInfo
 {
 public:
     qint32 id;
-    BasicInfo team;
+    QString name, info;
     qint8 auth;
-    quint8 flags;
-    qint16 rating;
-    Pokemon::uniqueId pokes[6];
+    Flags flags;
     quint16 avatar;
-    QString tier;
     QColor color;
-    quint8 gen;
+
+    QHash<QString, quint16> ratings;
+
+    PlayerInfo() {
+        avatar = id = auth = 0;
+    }
 
     enum {
-        LoggedIn = 1,
-        Battling = 2,
-        Away = 4
+        Away = 0,
+        LadderEnabled=1,
+        Battling=2
     };
 
     bool battling() const {
-        return flags & Battling;
+        return flags[Battling];
     }
 
     bool away() const {
-        return flags & Away;
+        return flags[Away];
     }
 
     void changeState(int state, bool on) {
-        if (on) {
-            flags |= state;
-        } else {
-            flags &= 0xFF ^ state;
-        }
+        flags.setFlag(state, on);
     }
 };
 
-QDataStream & operator >> (QDataStream &in, PlayerInfo &p);
-QDataStream & operator << (QDataStream &out, const PlayerInfo &p);
-
-struct FullInfo
-{
-    TrainerTeam team;
-
-    bool ladder;
-    bool showteam;
-    QColor nameColor;
-};
-
-QDataStream & operator >> (QDataStream &in, FullInfo &p);
-QDataStream & operator << (QDataStream &out, const FullInfo &p);
-
+DataStream & operator >> (DataStream &in, PlayerInfo &p);
+DataStream & operator << (DataStream &out, const PlayerInfo &p);
 
 struct Battle
 {
@@ -129,7 +104,102 @@ struct Battle
     Battle(int id1=0, int id2=0);
 };
 
-QDataStream & operator >> (QDataStream &in, Battle &p);
-QDataStream & operator << (QDataStream &out, const Battle &p);
+DataStream & operator >> (DataStream &in, Battle &p);
+DataStream & operator << (DataStream &out, const Battle &p);
+
+struct ProtocolVersion
+{
+    quint16 version;
+    quint16 subversion;
+
+    bool operator < (const ProtocolVersion &other) const
+    {return version < other.version || (version == other.version && subversion < other.subversion);}
+
+    ProtocolVersion();
+};
+
+DataStream & operator >> (DataStream &in, ProtocolVersion &p);
+DataStream & operator << (DataStream &out, const ProtocolVersion &p);
+
+struct TrainerInfo
+{
+    static const quint8 version = 0;
+    enum Flags {
+        HasWinningMessages
+    };
+    TrainerInfo();
+
+    quint16 avatar;
+    QString info;
+    QString winning, losing, tie;
+};
+
+DataStream & operator >> (DataStream &in, TrainerInfo &i);
+DataStream & operator << (DataStream &out, const TrainerInfo &i);
+
+class PersonalTeam
+{
+    PROPERTY(QString, defaultTier);
+    PROPERTY(Pokemon::gen, gen);
+protected:
+    PokePersonal m_pokes[6];
+
+public:
+    PersonalTeam();
+
+    const PokePersonal & poke(int index) const {return m_pokes[index];}
+    PokePersonal & poke(int index) {return m_pokes[index];}
+};
+
+DataStream & operator >> (DataStream & in, PersonalTeam & team);
+
+/* Only the infos needed by the server */
+struct LoginInfo
+{
+    LoginInfo();
+    ~LoginInfo();
+
+    ProtocolVersion version;
+    Flags network, data, events;
+    QString clientType;
+    quint16 clientVersion;
+    QString trainerName;
+    quint8 reconnectBits;
+    QColor trainerColor;
+    QList<PersonalTeam> *teams;
+    QString *channel;
+    QStringList *additionalChannels;
+    TrainerInfo *trainerInfo;
+    QStringList *plugins;
+};
+
+struct ChangeTeamInfo
+{
+    ChangeTeamInfo();
+
+    QString *name;
+    QColor *color;
+    QList<PersonalTeam> *teams;
+    PersonalTeam *team;
+    quint8 teamNum;
+    TrainerInfo *info;
+};
+
+DataStream & operator >> (DataStream & in, LoginInfo & team);
+
+struct ServerInfo
+{
+    ServerInfo();
+
+    QString name;
+    QString desc;
+    quint16 num;
+    QString ip;
+    quint16 max;
+    quint16 port;
+    bool passwordProtected;
+};
+
+DataStream & operator >> (DataStream & in, ServerInfo & info);
 
 #endif // NETWORKSTRUCTS_H

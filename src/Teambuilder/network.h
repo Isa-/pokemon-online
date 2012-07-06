@@ -1,3 +1,7 @@
+/**
+ * See network protocol here: http://wiki.pokemon-online.eu/view/Network_Protocol_v2
+*/
+
 #ifndef NETWORK_H
 #define NETWORK_H
 
@@ -42,7 +46,7 @@ signals:
 private:
     /* internal variables for the protocol */
     bool commandStarted;
-    quint16 remainingLength;
+    quint32 remainingLength;
 };
 
 #endif // NETWORK_H
